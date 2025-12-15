@@ -15,128 +15,117 @@
 #define EZ_COMPILE_LEXER_H
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/SMLoc.h"
+#include "llvm/Support/SourceMgr.h"
 
-#include <memory>
-#include <string>
+namespace mlir {
+class MLIRContext;
+} // namespace mlir
 
 namespace ezcompile {
 
-/// Structure definition a location in a file.
-struct Location {
-	std::shared_ptr<std::string> file; ///< filename.
-	int line;                          ///< line number.
-	int col;                           ///< column number.
-};
+/// Token 只做“切片”：
+/// - kind：类别（标识符/数字/符号/结构关键字等）
+/// - loc：起始位置（SMLoc 指向 buffer 内某个字符）
+/// - spelling：源码中的原始文本切片（StringRef 指向同一份 buffer）
+///
+/// 设计要点：
+/// 1) 不分配内存、不拷贝字符串：spelling 直接引用 SourceMgr 的 buffer，
+///    这符合 LLVM/MLIR 的“轻量前端”风格。
+/// 2) 词法层不做语义判断：比如一元负号、diff 是否内建函数，都交给 parser/语义层。
+class Token {
+public:
+    enum Kind : uint8_t {
+        eof,
+        error,
 
-// List of Token returned by the lexer.
-enum Token : int {
-	tok_semicolon        = ';',
-	tok_comma			 = ',',
-	tok_parenthese_open  = '(',
-	tok_parenthese_close = ')',
-	tok_bracket_open     = '{',
-	tok_bracket_close    = '}',
-	tok_sbracket_open    = '[',
-	tok_sbracket_close   = ']',
+        identifier, // [A-Za-z_][A-Za-z0-9_]*
+        number,     // 123 / 3.14 / 1e-6 之类（负号不并入 number）
 
-	// Operators (returned as their ASCII value, but listed here for clarity if needed)
-	tok_assign = '=',
-	tok_plus   = '+',
-	tok_minus  = '-',
-	tok_mul    = '*',
-	tok_div    = '/',
+        // 关键字
+        kw_declarations,
+        kw_equations,
+        kw_options,
 
-	tok_eof = -1,
+        // 符号
+        l_brace,    // {
+        r_brace,    // }
+        l_paren,    // (
+        r_paren,    // )
+        semicolon,  // ;
+        comma,      // ,
+        colon,      // :
+        equal,      // =
+        plus,       // +
+        minus,      // -
+        star,       // *
+        slash       // /
+    };
 
-	// keywords for comp language
-	tok_declarations = -2,
-	tok_equations    = -3,
-	tok_options      = -4,
-	tok_diff		 = -5,
+    Token() = default;
+    Token(Kind kind, llvm::SMLoc loc, llvm::StringRef spelling)
+        : kind(kind), loc(loc), spelling(spelling) {}
 
-	// primary
-	tok_identifier = -6,
-	tok_number     = 7,
+    Kind getKind() const { return kind; }
+    llvm::SMLoc getLoc() const { return loc; }
+    llvm::StringRef getSpelling() const { return spelling; }
+
+    bool is(Kind k) const { return kind == k; }
+    bool isNot(Kind k) const { return kind != k; }
+
+private:
+    Kind kind = eof;
+    llvm::SMLoc loc;
+    llvm::StringRef spelling;
 };
 
 class Lexer {
 public:
-	explicit Lexer(std::string filename)
-		: lastLocation({std::make_shared<std::string>(std::move(filename)), 0, 0}) {
+    /// bufferID 是 SourceMgr 中 MemoryBuffer 的 index（通常 0）。
+    /// context 可为空：为空则退化为 SourceMgr 自带报错；不为空则走 MLIR 诊断系统。
+    Lexer(llvm::SourceMgr &sourceMgr,
+          int bufferID,
+          mlir::MLIRContext *context);
 
-	}
+    /// 读取下一个 token。
+    Token lex();
 
-	virtual ~Lexer() = default;
-
-	/// Look at the current token in the stream.
-	Token getCurToken() { return curTok; }
-
-	/// Move to the next token in the stream and return it.
-	Token getNextToken() { return curTok = getTok(); }
-
-	/// Move to the next token in the stream, asserting on the current token
-	/// matching the expectation.
-	void consume(Token tok) {
-		assert(tok == curTok && "consume Token mismatch expectation");
-		getNextToken();
-	}
-
-	/// Return the current identifier (prereq: getCurToken() == tok_identifier)
-	llvm::StringRef getId() {
-		assert(curTok == tok_identifier);
-		return identifierStr;
-	}
-
-	/// Return the current number (prereq: getCurToken() == tok_number)
-	double getValue() {
-		assert(curTok == tok_number);
-		return numVal;
-	}
-
-	/// Return the location for the beginning of the current token.
-	Location getLastLocation() { return lastLocation; }
-
-	// Return the current line in the file.
-	[[nodiscard]] int getLine() const { return curLineNum; }
-
-	// Return the current column in the file.
-	[[nodiscard]] int getCol() const { return curCol; }
+    bool hadError() const { return sawError; }
 
 private:
-	/// Delegate to a derived class fetching the next line.
-	virtual llvm::StringRef readNextLine() = 0;
+    /// 跳过空白与注释。
+    /// 注释语法（comp 源码）：
+    /// - # line comment  （从 # 到行尾）
+    ///
+    /// 说明：
+    /// 1) 词法层只负责跳过注释，不产出注释 token。
+    /// 2) 这样保持 lexer 无状态、无上下文，便于后续 parser/IRGen 统一处理。
+    void skipWhitespaceAndComments();
 
-	/// Return the next character from the stream.
-	int getNextChar();
+    /// 识别 identifier 或结构关键字（declarations/equations/options）。
+    /// 注意：diff/sin/exp/log 等一律作为 identifier，
+    /// 后续由 parser 看到 "identifier '(' ... ')'" 来形成 CallExpr。
+    Token lexIdentifierOrKeyword();
 
-	///  Return the next token from standard input.
-	Token getTok();
+    /// 识别 number（不吃前导 +/-，避免把 “-6” 粘成一个 token，保持无上下文）。
+    Token lexNumber();
 
-	/// The last token read from the input.
-	Token curTok = tok_eof;
+    /// diagnostics：尽量走 MLIR 的 emitError（带 FileLineColLoc），
+    /// 这样后续 parser/IRGen 也能复用同一套报错风格。
+    void emitError(llvm::SMLoc loc, llvm::StringRef message);
 
-	/// Location for `curTok`.
-	Location lastLocation;
+private:
+    llvm::SourceMgr &sourceMgr;
+    const int bufferID;
+    mlir::MLIRContext *context = nullptr;
 
-	/// If the current Token is an identifier, this string contains the value.
-	std::string identifierStr;
+    const char *bufferStart = nullptr;
+    const char *bufferEnd = nullptr;
+    const char *curPtr = nullptr;
 
-	/// If the current Token is a number, this contains the value.
-	double numVal = 0;
-
-	/// The last value returned by getNextChar().
-	Token lastChar = Token(' ');
-
-	/// Keep track of the current line number in the input stream
-	int curLineNum = 0;
-
-	/// Keep track of the current column number in the input stream
-	int curCol = 0;
-
-	/// Buffer supplied by the derived class on calls to `readNextLine()`
-	llvm::StringRef curLineBuffer = "\n";
+    bool sawError = false;
 };
 
-}
+} // namespace ezcompile
 
-#endif //EZ_COMPILE_LEXER_H
+#endif // EZ_COMPILE_LEXER_H

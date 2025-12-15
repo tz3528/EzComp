@@ -10,89 +10,212 @@
 //
 //===----------------------------------------------------------------------===//
 
+
+#include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/ADT/StringExtras.h"
+
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
+#include "mlir/Support/LLVM.h"
+
 #include "Lexer.h"
 
 namespace ezcompile {
 
-int Lexer::getNextChar() {
-	if (curLineBuffer.empty())
-		return EOF;
-	++curCol;
-	auto nextchar = curLineBuffer.front();
-	curLineBuffer = curLineBuffer.drop_front();
-	if (curLineBuffer.empty())
-		curLineBuffer = readNextLine();
-	if (nextchar == '\n') {
-		++curLineNum;
-		curCol = 0;
-	}
-	return nextchar;
+using llvm::StringRef;
+
+// 这里用 llvm::isAlpha/isAlnum 等工具函数（LLVM 常用工具），
+static bool isIdentStart(char c) {
+    return llvm::isAlpha(c) || c == '_';
 }
 
-Token Lexer::getTok() {
-	// Skip any whitespace.
-	while (isspace(lastChar))
-		lastChar = Token(getNextChar());
-
-	// Save the current location.
-	lastLocation.line = curLineNum;
-	lastLocation.col = curCol;
-
-	// Identifier: [a-zA-Z][a-zA-Z0-9_]*
-	if (isalpha(lastChar)) {
-		identifierStr = (char)lastChar;
-		while (isalnum((lastChar = Token(getNextChar()))) || lastChar == '_')
-			identifierStr += (char)lastChar;
-
-		// Check for comp language keywords
-		if (identifierStr == "declarations")
-			return tok_declarations;
-		if (identifierStr == "equations")
-			return tok_equations;
-		if (identifierStr == "options")
-			return tok_options;
-		if (identifierStr == "diff")
-			return tok_diff;
-
-		return tok_identifier;
-	}
-
-	// Number: [0-9.]+
-	// Note: This parses positive numbers.
-	// Negative numbers (e.g. -6) are parsed as tok_minus then tok_number.
-	if (isdigit(lastChar) || lastChar == '.') {
-		std::string numStr;
-		do {
-			numStr += std::to_string(lastChar);
-			lastChar = Token(getNextChar());
-		}
-		while (isdigit(lastChar) || lastChar == '.');
-
-		numVal = strtod(numStr.c_str(), nullptr);
-		return tok_number;
-	}
-
-	// Comment support: '#' until end of line
-	if (lastChar == '#') {
-		do {
-			lastChar = Token(getNextChar());
-		}
-		while (lastChar != EOF && lastChar != '\n' && lastChar != '\r');
-
-		if (lastChar != EOF)
-			return getTok();
-	}
-
-	// Check for end of file.
-	if (lastChar == EOF)
-		return tok_eof;
-
-	// Otherwise, return the character as its ascii value.
-	// This handles +, -, =, ;, etc.
-	auto thisChar = Token(lastChar);
-	lastChar = Token(getNextChar());
-	return thisChar;
+static bool isIdentBody(char c) {
+    return llvm::isAlnum(c) || c == '_';
 }
 
-
+Lexer::Lexer(llvm::SourceMgr &sourceMgr,
+             int bufferID,
+             mlir::MLIRContext *context)
+    : sourceMgr(sourceMgr),
+      bufferID(bufferID),
+      context(context) {
+    // 从 SourceMgr 拿到 buffer，并用 begin/end 当作指针游标。
+    // 这保证：
+    // - lex() 全程是线性扫描
+    // - token 的 spelling 只是 StringRef（指向原 buffer），不分配内存
+    const llvm::MemoryBuffer *buf = sourceMgr.getMemoryBuffer(bufferID);
+    StringRef s = buf->getBuffer();
+    bufferStart = s.begin();
+    bufferEnd = s.end();
+    curPtr = bufferStart;
 }
+
+Token Lexer::lex() {
+    // 先跳过空白/注释，保证调用者看到的都是有效 token。
+    skipWhitespaceAndComments();
+
+    llvm::SMLoc loc = llvm::SMLoc::getFromPointer(curPtr);
+    if (curPtr >= bufferEnd)
+        return Token(Token::eof, loc, StringRef());
+
+    const char *tokStart = curPtr;
+    char c = *curPtr;
+
+    // identifier / keyword（结构关键字在这里特判）
+    if (isIdentStart(c))
+        return lexIdentifierOrKeyword();
+
+    // number：
+    // - 允许 "123"、"3.14"、".5"、"1e-6"
+    // - 但不把 '-' 并入 number（保持无上下文），否则 options 里的 -6 会粘成一个 token，
+    //   解析器处理一元负号会更别扭。
+    if (llvm::isDigit(c) ||
+        (c == '.' && (curPtr + 1) < bufferEnd && llvm::isDigit(curPtr[1])))
+        return lexNumber();
+
+    // 单字符符号：直接返回，不做更复杂的合并（目前语法也不需要）。
+    ++curPtr;
+    switch (c) {
+    case '{': return Token(Token::l_brace, loc, "{");
+    case '}': return Token(Token::r_brace, loc, "}");
+    case '(': return Token(Token::l_paren, loc, "(");
+    case ')': return Token(Token::r_paren, loc, ")");
+    case ';': return Token(Token::semicolon, loc, ";");
+    case ',': return Token(Token::comma, loc, ",");
+    case ':': return Token(Token::colon, loc, ":");
+    case '=': return Token(Token::equal, loc, "=");
+    case '+': return Token(Token::plus, loc, "+");
+    case '-': return Token(Token::minus, loc, "-");
+    case '*': return Token(Token::star, loc, "*");
+    case '/': return Token(Token::slash, loc, "/");
+    default:
+        // 词法错误：未知字符
+        emitError(loc, "unexpected character");
+        return Token(Token::error, loc, StringRef(tokStart, 1));
+    }
+}
+
+void Lexer::skipWhitespaceAndComments() {
+    while (curPtr < bufferEnd) {
+        // 1) 空白：包括空格、tab、换行等，直接跳过
+        if (llvm::isSpace(*curPtr)) {
+            ++curPtr;
+            continue;
+        }
+
+        // 2) 行注释：# ... \n
+        //    - 无论 '#' 出现在行首还是代码后（如 ";#comment"），都能被下一次 lex() 入口吃掉
+        if (*curPtr == '#') {
+            ++curPtr; // 吃掉 '#'
+            while (curPtr < bufferEnd && *curPtr != '\n')
+                ++curPtr;
+            continue;
+        }
+
+        // 既不是空白也不是注释：停止跳过，回到 lex() 处理 token
+        break;
+    }
+}
+
+Token Lexer::lexIdentifierOrKeyword() {
+    const char *tokStart = curPtr;
+    ++curPtr;
+    while (curPtr < bufferEnd && isIdentBody(*curPtr))
+        ++curPtr;
+
+    StringRef spelling(tokStart, curPtr - tokStart);
+
+    // 只把“语法结构保留字”当 keyword。
+    // diff/sin/exp/log 等全部是 identifier，后续由 parser 识别函数调用。
+    Token::Kind kind =
+        llvm::StringSwitch<Token::Kind>(spelling)
+            .Case("declarations", Token::kw_declarations)
+            .Case("equations", Token::kw_equations)
+            .Case("options", Token::kw_options)
+            .Default(Token::identifier);
+
+    return Token(kind,
+                 llvm::SMLoc::getFromPointer(tokStart),
+                 spelling);
+}
+
+Token Lexer::lexNumber() {
+    const char *tokStart = curPtr;
+
+    // 允许以 '.' 开头的浮点（如 .5）
+    if (*curPtr == '.')
+        ++curPtr;
+
+    // 整数部分（或者 . 后面的第一段 digits）
+    while (curPtr < bufferEnd && llvm::isDigit(*curPtr))
+        ++curPtr;
+
+    // 小数部分：digits '.' digits
+    // 注意：如果写成 "123." 且后面不是 digit，这里不把 '.' 吃进 number，
+    // 让 parser 决定这是否合法（目前你的语言未必需要 "123." 这种写法）。
+    if (curPtr < bufferEnd &&
+        *curPtr == '.' &&
+        (curPtr + 1) < bufferEnd &&
+        llvm::isDigit(curPtr[1])) {
+        ++curPtr;
+        while (curPtr < bufferEnd && llvm::isDigit(*curPtr))
+            ++curPtr;
+    }
+
+    // 科学计数：e/E [+-]? digits
+    if (curPtr < bufferEnd &&
+        (*curPtr == 'e' || *curPtr == 'E')) {
+        const char *expStart = curPtr;
+        ++curPtr;
+        if (curPtr < bufferEnd &&
+            (*curPtr == '+' || *curPtr == '-'))
+            ++curPtr;
+
+        // e 后必须跟至少一个 digit，否则报错
+        if (curPtr >= bufferEnd || !llvm::isDigit(*curPtr)) {
+            emitError(llvm::SMLoc::getFromPointer(expStart),
+                      "malformed exponent");
+            return Token(Token::error,
+                         llvm::SMLoc::getFromPointer(tokStart),
+                         StringRef(tokStart, curPtr - tokStart));
+        }
+
+        while (curPtr < bufferEnd && llvm::isDigit(*curPtr))
+            ++curPtr;
+    }
+
+    return Token(Token::number,
+                 llvm::SMLoc::getFromPointer(tokStart),
+                 StringRef(tokStart, curPtr - tokStart));
+}
+
+void Lexer::emitError(llvm::SMLoc loc, llvm::StringRef message) {
+    sawError = true;
+
+    // 尽量走 MLIR 诊断体系：
+    // 1) 通过 SourceMgr 拿到 (line, col)
+    // 2) 构造 FileLineColLoc
+    // 3) emitError 统一打印格式（和后续 parser/IRGen 的错误一致）
+    if (context) {
+        auto lineCol = sourceMgr.getLineAndColumn(loc, bufferID);
+        StringRef fileName =
+            sourceMgr.getMemoryBuffer(bufferID)->getBufferIdentifier();
+
+        mlir::Location mlirLoc =
+            mlir::FileLineColLoc::get(context,
+                                      fileName,
+                                      lineCol.first,
+                                      lineCol.second);
+
+        mlir::emitError(mlirLoc) << message;
+        return;
+    }
+
+    // 没有 MLIRContext 的情况下，退化到 LLVM SourceMgr 的报错输出
+    sourceMgr.PrintMessage(loc,
+                           llvm::SourceMgr::DK_Error,
+                           message);
+}
+
+} // namespace ezcompile
