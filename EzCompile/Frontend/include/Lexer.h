@@ -41,6 +41,7 @@ public:
 
         identifier, // [A-Za-z_][A-Za-z0-9_]*
         number,     // 123 / 3.14 / 1e-6 之类（负号不并入 number）
+        string,
 
         // 关键字
         kw_declarations,
@@ -109,6 +110,8 @@ private:
 
     /// 识别 number（不吃前导 +/-，避免把 “-6” 粘成一个 token，保持无上下文）。
     Token lexNumber();
+
+    Token lexStringLiteral();
 
     /// diagnostics：尽量走 MLIR 的 emitError（带 FileLineColLoc），
     /// 这样后续 parser/IRGen 也能复用同一套报错风格。

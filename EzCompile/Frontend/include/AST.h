@@ -37,6 +37,8 @@ public:
     llvm::SMLoc getBeginLoc() const { return range.begin; }
     llvm::SMLoc getEndLoc() const { return range.end; }
 
+    void setRange(SourceRange r) { range = r; }
+
 protected:
     ASTNode() = default;
     explicit ASTNode(SourceRange r) : range(r) {}

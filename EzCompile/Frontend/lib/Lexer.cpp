@@ -74,6 +74,9 @@ Token Lexer::lex() {
         (c == '.' && (curPtr + 1) < bufferEnd && llvm::isDigit(curPtr[1])))
         return lexNumber();
 
+    if (c == '"')
+        return lexStringLiteral();
+
     // 单字符符号：直接返回，不做更复杂的合并（目前语法也不需要）。
     ++curPtr;
     switch (c) {
@@ -188,6 +191,38 @@ Token Lexer::lexNumber() {
     return Token(Token::number,
                  llvm::SMLoc::getFromPointer(tokStart),
                  StringRef(tokStart, curPtr - tokStart));
+}
+
+Token Lexer::lexStringLiteral() {
+    const char *start = curPtr;
+    llvm::SMLoc loc = llvm::SMLoc::getFromPointer(start);
+
+    ++curPtr; // eat opening "
+
+    while (curPtr < bufferEnd) {
+        char c = *curPtr;
+
+        if (c == '"') {
+            ++curPtr; // eat closing "
+            llvm::StringRef spelling(start, curPtr - start);
+            return Token(Token::string, loc, spelling);
+        }
+
+        if (c == '\\') {
+            ++curPtr; // eat '\'
+            if (curPtr < bufferEnd)
+                ++curPtr; // skip escaped char
+            continue;
+        }
+
+        if (c == '\n' || c == '\r')
+            break;
+
+        ++curPtr;
+    }
+
+    emitError(loc, "unterminated string literal");
+    return Token(Token::error, loc, llvm::StringRef(start, curPtr - start));
 }
 
 void Lexer::emitError(llvm::SMLoc loc, llvm::StringRef message) {
