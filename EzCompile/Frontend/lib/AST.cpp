@@ -15,201 +15,103 @@
 
 #include "AST.h"
 
+#include <complex>
+
 namespace ezcompile {
 
-static void indent(llvm::raw_ostream &os, unsigned n) {
-    for (unsigned i = 0; i < n; ++i)
-        os << ' ';
+void ASTDumper::dump(ExprAST *expr) {
+    llvm::TypeSwitch<ExprAST *>(expr)
+          .Case<BinaryExprAST, CallExprAST, StringExprAST,
+                NumberExprAST, UnaryExprAST, VarRefExprAST>(
+              [&](auto *node) { this->dump(node); })
+          .Default([&](ExprAST *) {
+            // No match, fallback to a generic message
+            INDENT();
+            llvm::errs() << "<unknown Expr, kind " << expr->getKind() << ">\n";
+          });
 }
 
-static void printExpr(const ExprAST &e, llvm::raw_ostream &os, unsigned ind);
-static void printItem(const ItemAST &i, llvm::raw_ostream &os, unsigned ind);
-
-void ExprAST::print(llvm::raw_ostream &os, unsigned indentAmt) const {
-    printExpr(*this, os, indentAmt);
+void ASTDumper::dump(VarDeclAST *node) {
+    INDENT();
+    llvm::errs() << "VarDecl : " << node->getName();
+    if (node->getInit() != nullptr) {
+        llvm::errs() << " = ";
+        dump(node->getInit());
+    }
+    llvm::errs() << "\n";
 }
 
-void ExprAST::dump() const {
-    print(llvm::errs(), 0);
+void ASTDumper::dump(EquationAST *node) {
+    INDENT();
+    llvm::errs() << "Equation : ";
+    dump(node->getLHS());
+    llvm::errs() << " = ";
+    dump(node->getRHS());
+    llvm::errs() << "\n";
 }
 
-void ItemAST::print(llvm::raw_ostream &os, unsigned indentAmt) const {
-    printItem(*this, os, indentAmt);
+void ASTDumper::dump(OptionAST *node) {
+    INDENT();
+    llvm::errs() << "Option :\n";
+    llvm::errs() << "    Key{ " << node->getKey() << " }\n";
+    llvm::errs() << "    Value{ " << node->getValue() << " }\n";
 }
 
-void ItemAST::dump() const {
-    print(llvm::errs(), 0);
+void ASTDumper::dump(NumberExprAST *node) {
+    INDENT();
+    llvm::errs() << node->getLiteral();
 }
 
-void ModuleAST::print(llvm::raw_ostream &os, unsigned ind) const {
-    indent(os, ind);
-    os << "ModuleAST\n";
-
-    indent(os, ind + 4);
-    os << "declarations: " << decls.size() << "\n";
-    for (const auto &d : decls) {
-        if (d)
-            d->print(os, ind + 8);
-        else {
-            indent(os, ind + 8);
-            os << "<null decl>\n";
-        }
-    }
-
-    indent(os, ind + 4);
-    os << "equations: " << equations.size() << "\n";
-    for (const auto &e : equations) {
-        if (e)
-            e->print(os, ind + 8);
-        else {
-            indent(os, ind + 8);
-            os << "<null equation>\n";
-        }
-    }
-
-    indent(os, ind + 4);
-    os << "options: " << options.size() << "\n";
-    for (const auto &o : options) {
-        if (o)
-            o->print(os, ind + 8);
-        else {
-            indent(os, ind + 8);
-            os << "<null option>\n";
-        }
-    }
+void ASTDumper::dump(StringExprAST *node) {
+    INDENT();
+    llvm::errs() << node->getValue();
 }
 
-void ModuleAST::dump() const {
-    print(llvm::errs(), 0);
+void ASTDumper::dump(VarRefExprAST *node) {
+    INDENT();
+    llvm::errs() << node->getName();
 }
 
-//===----------------------------------------------------------------------===//
-// Internal printers
-//===----------------------------------------------------------------------===//
-
-static void printExpr(const ExprAST &e, llvm::raw_ostream &os, unsigned ind) {
-    switch (e.getKind()) {
-    case ExprAST::Kind::Num: {
-        const auto &n = static_cast<const NumExprAST &>(e);
-        indent(os, ind);
-        os << "NumExprAST literal=" << n.getLiteral() << "\n";
-        return;
-    }
-    case ExprAST::Kind::String: {
-        const auto &s = static_cast<const StringExprAST &>(e);
-        indent(os, ind);
-        os << "StringExprAST value=\"" << s.getValue() << "\"\n";
-        return;
-    }
-    case ExprAST::Kind::VarRef: {
-        const auto &v = static_cast<const VarRefExprAST &>(e);
-        indent(os, ind);
-        os << "VarRefExprAST name=" << v.getName() << "\n";
-        return;
-    }
-    case ExprAST::Kind::UnaryOp: {
-        const auto &u = static_cast<const UnaryOpExprAST &>(e);
-        indent(os, ind);
-        os << "UnaryOpExprAST op='" << u.getOp() << "'\n";
-        if (u.getOperand())
-            u.getOperand()->print(os, ind + 4);
-        else {
-            indent(os, ind + 4);
-            os << "<null operand>\n";
-        }
-        return;
-    }
-    case ExprAST::Kind::BinOp: {
-        const auto &b = static_cast<const BinOpExprAST &>(e);
-        indent(os, ind);
-        os << "BinOpExprAST op='" << b.getOp() << "'\n";
-        if (b.getLHS())
-            b.getLHS()->print(os, ind + 4);
-        else {
-            indent(os, ind + 4);
-            os << "<null lhs>\n";
-        }
-        if (b.getRHS())
-            b.getRHS()->print(os, ind + 4);
-        else {
-            indent(os, ind + 4);
-            os << "<null rhs>\n";
-        }
-        return;
-    }
-    case ExprAST::Kind::Call: {
-        const auto &c = static_cast<const CallExprAST &>(e);
-        indent(os, ind);
-        os << "CallExprAST callee=" << c.getCallee()
-           << " args=" << c.getArgs().size() << "\n";
-        for (const auto &arg : c.getArgs()) {
-            if (arg)
-                arg->print(os, ind + 4);
-            else {
-                indent(os, ind + 4);
-                os << "<null arg>\n";
-            }
-        }
-        return;
-    }
-    }
-    llvm_unreachable("unknown ExprAST kind");
+void ASTDumper::dump(UnaryExprAST *node) {
+    INDENT();
+    llvm::errs() << node->getOp() << node->getOperand();
 }
 
-static void printItem(const ItemAST &i, llvm::raw_ostream &os, unsigned ind) {
-    switch (i.getKind()) {
-    case ItemAST::Kind::VarDecl: {
-        const auto &d = static_cast<const VarDeclAST &>(i);
-        indent(os, ind);
-        os << "VarDeclAST name=" << d.getName() << "\n";
-        if (d.getInit()) {
-            indent(os, ind + 4);
-            os << "init:\n";
-            d.getInit()->print(os, ind + 8);
-        } else {
-            indent(os, ind + 4);
-            os << "init: <default 0>\n";
-        }
-        return;
-    }
-    case ItemAST::Kind::Equation: {
-        const auto &eq = static_cast<const EquationAST &>(i);
-        indent(os, ind);
-        os << "EquationAST\n";
-        if (eq.getLHS()) {
-            indent(os, ind + 4);
-            os << "lhs:\n";
-            eq.getLHS()->print(os, ind + 8);
-        } else {
-            indent(os, ind + 4);
-            os << "lhs: <null>\n";
-        }
-        if (eq.getRHS()) {
-            indent(os, ind + 4);
-            os << "rhs:\n";
-            eq.getRHS()->print(os, ind + 8);
-        } else {
-            indent(os, ind + 4);
-            os << "rhs: <null>\n";
-        }
-        return;
-    }
-    case ItemAST::Kind::Option: {
-        const auto &op = static_cast<const OptionAST &>(i);
-        indent(os, ind);
-        os << "OptionAST key=" << op.getKey() << "\n";
-        if (op.getValue()) {
-            indent(os, ind + 4);
-            os << "value:\n";
-            op.getValue()->print(os, ind + 8);
-        } else {
-            indent(os, ind + 4);
-            os << "value: <null>\n";
-        }
-        return;
-    }
-    }
-    llvm_unreachable("unknown ItemAST kind");
+void ASTDumper::dump(BinaryExprAST *node) {
+    INDENT();
+    llvm::errs() << node->getLHS() << " = " << node->getRHS();
 }
+
+void ASTDumper::dump(CallExprAST *node) {
+    INDENT();
+    llvm::errs() << node->getCallee();
+    llvm::errs() << "(";
+    for (auto it = node->getArgs().begin(); it != node->getArgs().end(); ) {
+        dump((*it).get());
+        it++;
+        if (it != node->getArgs().end()) {
+            llvm::errs() << ", ";
+        }
+    }
+    llvm::errs() << ")\n";
+}
+
+void ASTDumper::dump(ModuleAST *module) {
+    llvm::errs() << "Declarations:\n";
+    for (auto& decl : module->getDecls()) {
+        dump(decl.get());
+    }
+    llvm::errs() << "\nEquations:\n";
+    for (auto& equation : module->getEquations()) {
+        dump(equation.get());
+    }
+    llvm::errs() << "\nOptions:\n";
+    for (auto& option : module->getOptions()) {
+        dump(option.get());
+    }
+    llvm::errs() << "\n";
+}
+
+void dump(ModuleAST &module ){ ASTDumper().dump(&module); }
 
 } // namespace ezcompile

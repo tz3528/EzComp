@@ -17,6 +17,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 #include <cstdint>
 #include <memory>
@@ -52,25 +53,22 @@ protected:
 
 class ExprAST : public ASTNode {
 public:
-    enum class Kind : uint8_t {
-        Num,
+    enum Kind : uint8_t {
+        Number,
         String,
         VarRef,
-        BinOp,
-        UnaryOp,
+        Binary,
+        Unary,
         Call,
     };
 
     Kind getKind() const { return kind; }
 
-    void print(llvm::raw_ostream &os, unsigned indent = 0) const;
-    void dump() const;
-
 protected:
     ExprAST(Kind k, SourceRange r) : ASTNode(r), kind(k) {}
 
 private:
-    Kind kind;
+    const Kind kind;
 };
 
 template <typename Derived, ExprAST::Kind K>
@@ -82,10 +80,10 @@ protected:
     explicit ExprBase(SourceRange r) : ExprAST(K, r) {}
 };
 
-class NumExprAST final
-    : public ExprBase<NumExprAST, ExprAST::Kind::Num> {
+class NumberExprAST final
+    : public ExprBase<NumberExprAST, ExprAST::Kind::Number> {
 public:
-    NumExprAST(llvm::StringRef literal, SourceRange r)
+    NumberExprAST(llvm::StringRef literal, SourceRange r)
         : ExprBase(r), literal(literal) {}
 
     llvm::StringRef getLiteral() const { return literal; }
@@ -118,10 +116,10 @@ private:
     llvm::StringRef name;
 };
 
-class UnaryOpExprAST final
-    : public ExprBase<UnaryOpExprAST, ExprAST::Kind::UnaryOp> {
+class UnaryExprAST final
+    : public ExprBase<UnaryExprAST, ExprAST::Kind::Unary> {
 public:
-    UnaryOpExprAST(char op,
+    UnaryExprAST(char op,
                    std::unique_ptr<ExprAST> operand,
                    SourceRange r)
         : ExprBase(r), op(op), operand(std::move(operand)) {}
@@ -135,10 +133,10 @@ private:
     std::unique_ptr<ExprAST> operand;
 };
 
-class BinOpExprAST final
-    : public ExprBase<BinOpExprAST, ExprAST::Kind::BinOp> {
+class BinaryExprAST final
+    : public ExprBase<BinaryExprAST, ExprAST::Kind::Binary> {
 public:
-    BinOpExprAST(char op,
+    BinaryExprAST(char op,
                  std::unique_ptr<ExprAST> lhs,
                  std::unique_ptr<ExprAST> rhs,
                  SourceRange r)
@@ -195,7 +193,6 @@ public:
     Kind getKind() const { return kind; }
 
     void print(llvm::raw_ostream &os, unsigned indent = 0) const;
-    void dump() const;
 
 protected:
     ItemAST(Kind k, SourceRange r) : ASTNode(r), kind(k) {}
@@ -293,13 +290,57 @@ public:
     const OptList &getOptions() const { return options; }
 
     void print(llvm::raw_ostream &os, unsigned indent = 0) const;
-    void dump() const;
 
 private:
     DeclList decls;
     EqList equations;
     OptList options;
 };
+
+struct Indent {
+    explicit Indent(int &level) : level(level) { ++level; }
+    ~Indent() { --level; }
+    int &level;
+};
+
+#define INDENT()                                                               \
+Indent level_(curIndent);                                                    \
+indent();
+
+template <typename T>
+static std::string loc(T *node) {
+    const auto &loc = node->getLoc();
+    return (llvm::Twine("@") + *loc.file + ":" + llvm::Twine(loc.line) + ":" +
+            llvm::Twine(loc.col))
+        .str();
+}
+
+/// 辅助类，用于打印当前节点
+class ASTDumper {
+public:
+    void dump(ModuleAST *node);
+
+private:
+    void dump(ExprAST *expr);
+    void dump(VarDeclAST *node);
+    void dump(EquationAST *node);
+    void dump(OptionAST *node);
+    void dump(NumberExprAST *node);
+    void dump(StringExprAST *node);
+    void dump(VarRefExprAST *node);
+    void dump(UnaryExprAST *node);
+    void dump(BinaryExprAST *node);
+    void dump(CallExprAST *node);
+
+    // Actually print spaces matching the current indentation level
+    void indent() const {
+        for (int i = 0; i < curIndent; i++)
+            llvm::errs() << "  ";
+    }
+    int curIndent = 0;
+};
+
+void dump(ModuleAST &module );
 
 } // namespace ezcompile
 

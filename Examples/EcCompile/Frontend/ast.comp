@@ -1,0 +1,13 @@
+declarations {
+    x=0;
+    y=0;
+}
+equations {
+    x=diff(x,0)+y+2;
+    y=x-y-2;
+}
+options {
+    precision:-6;
+    delta:-6;
+    length:1000;
+}

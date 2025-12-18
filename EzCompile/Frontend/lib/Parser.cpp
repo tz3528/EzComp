@@ -299,7 +299,7 @@ std::unique_ptr<ExprAST> Parser::parseExpr(int minPrec) {
             if (!rhs) return nullptr;
         }
 
-        lhs = std::make_unique<BinOpExprAST>(
+        lhs = std::make_unique<BinaryExprAST>(
             op, std::move(lhs), std::move(rhs),
             SourceRange(lhs->getBeginLoc(), rhs->getEndLoc()));
     }
@@ -317,7 +317,7 @@ std::unique_ptr<ExprAST> Parser::parseUnary() {
         auto operand = parseUnary();
         if (!operand) return nullptr;
 
-        return std::make_unique<UnaryOpExprAST>(
+        return std::make_unique<UnaryExprAST>(
             op, std::move(operand),
             SourceRange(begin, operand->getEndLoc()));
     }
@@ -328,12 +328,11 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
     if (curTok.is(Token::number)) {
         Token t = curTok;
         advance();
-        return std::make_unique<NumExprAST>(
+        return std::make_unique<NumberExprAST>(
             t.getSpelling(),
             SourceRange(t.getLoc(), tokenEndLoc(t)));
     }
 
-    // 若你扩展 lexer：Token::string_lit
     if (curTok.is(Token::string)) {
         Token t = curTok;
         advance();
@@ -429,7 +428,7 @@ std::unique_ptr<ExprAST> Parser::parseOptionLiteral() {
             lit = intern(tmp);
         }
 
-        return std::make_unique<NumExprAST>(
+        return std::make_unique<NumberExprAST>(
             lit, SourceRange(begin, tokenEndLoc(numTok)));
     }
 
@@ -465,7 +464,7 @@ void Parser::validateOption(const Token &keyTok, const ExprAST *value) {
     if (rule->allowed.empty()) return;
 
     std::string got;
-    if (auto *n = llvm::dyn_cast<NumExprAST>(value)) got = n->getLiteral().str();
+    if (auto *n = llvm::dyn_cast<NumberExprAST>(value)) got = n->getLiteral().str();
     else if (auto *s = llvm::dyn_cast<StringExprAST>(value)) got = s->getValue().str();
 
     for (auto &ok : rule->allowed) {
