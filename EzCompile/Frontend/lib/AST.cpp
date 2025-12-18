@@ -58,32 +58,28 @@ void ASTDumper::dump(OptionAST *node) {
 }
 
 void ASTDumper::dump(NumberExprAST *node) {
-    INDENT();
     llvm::errs() << node->getLiteral();
 }
 
 void ASTDumper::dump(StringExprAST *node) {
-    INDENT();
     llvm::errs() << node->getValue();
 }
 
 void ASTDumper::dump(VarRefExprAST *node) {
-    INDENT();
     llvm::errs() << node->getName();
 }
 
 void ASTDumper::dump(UnaryExprAST *node) {
-    INDENT();
     llvm::errs() << node->getOp() << node->getOperand();
 }
 
 void ASTDumper::dump(BinaryExprAST *node) {
-    INDENT();
-    llvm::errs() << node->getLHS() << " = " << node->getRHS();
+    dump(node->getLHS());
+    llvm::errs()<< " " << node->getOp() << " ";
+    dump(node->getRHS());
 }
 
 void ASTDumper::dump(CallExprAST *node) {
-    INDENT();
     llvm::errs() << node->getCallee();
     llvm::errs() << "(";
     for (auto it = node->getArgs().begin(); it != node->getArgs().end(); ) {
@@ -93,23 +89,25 @@ void ASTDumper::dump(CallExprAST *node) {
             llvm::errs() << ", ";
         }
     }
-    llvm::errs() << ")\n";
+    llvm::errs() << ")";
 }
 
 void ASTDumper::dump(ModuleAST *module) {
     llvm::errs() << "Declarations:\n";
     for (auto& decl : module->getDecls()) {
         dump(decl.get());
+        llvm::errs() << "\n";
     }
-    llvm::errs() << "\nEquations:\n";
+    llvm::errs() << "Equations:\n";
     for (auto& equation : module->getEquations()) {
         dump(equation.get());
+        llvm::errs() << "\n";
     }
-    llvm::errs() << "\nOptions:\n";
+    llvm::errs() << "Options:\n";
     for (auto& option : module->getOptions()) {
         dump(option.get());
+        llvm::errs() << "\n";
     }
-    llvm::errs() << "\n";
 }
 
 void dump(ModuleAST &module ){ ASTDumper().dump(&module); }
