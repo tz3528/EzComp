@@ -10,7 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "EzCompile/Frontend/include/AST.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorOr.h"

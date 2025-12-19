@@ -421,15 +421,13 @@ std::unique_ptr<ExprAST> Parser::parseOptionLiteral() {
         advance();
 
         StringRef lit = numTok.getSpelling();
+        auto number = std::make_unique<NumberExprAST>(lit, SourceRange(begin, tokenEndLoc(numTok)));
         if (sign) {
-            std::string tmp;
-            tmp.push_back(sign);
-            tmp.append(lit.str());
-            lit = intern(tmp);
+            return std::make_unique<UnaryExprAST>(
+                sign, std::move(number),SourceRange(begin, tokenEndLoc(numTok)));
         }
 
-        return std::make_unique<NumberExprAST>(
-            lit, SourceRange(begin, tokenEndLoc(numTok)));
+        return number;
     }
 
     // string literal

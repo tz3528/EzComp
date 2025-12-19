@@ -108,7 +108,16 @@ private:
 
     llvm::StringRef intern(llvm::StringRef s) { return saver.save(s); }
 
-    static bool isNumberLiteral(const ExprAST *e) { return llvm::isa<NumberExprAST>(e); }
+    static bool isNumberLiteral(const ExprAST *e) {
+        if (llvm::isa<NumberExprAST>(e)) return true;
+        if (auto now = llvm::dyn_cast<UnaryExprAST>(e)) {
+            auto op = now->getOp();
+            if ((op=='+'||op=='-')&&llvm::isa<NumberExprAST>(now->getOperand())) {
+                return true;
+            }
+        }
+        return false;
+    }
     static bool isStringLiteral(const ExprAST *e) { return llvm::isa<StringExprAST>(e); }
 
 private:

@@ -54,15 +54,17 @@ void ASTDumper::dump(OptionAST *node) {
     INDENT();
     llvm::errs() << "Option :\n";
     llvm::errs() << "    Key{ " << node->getKey() << " }\n";
-    llvm::errs() << "    Value{ " << node->getValue() << " }\n";
+    llvm::errs() << "    Value{ ";
+    dump(node->getValue());
+    llvm::errs() << " }\n";
 }
 
 void ASTDumper::dump(NumberExprAST *node) {
-    llvm::errs() << node->getLiteral();
+    llvm::errs() << node->getLiteral().str();
 }
 
 void ASTDumper::dump(StringExprAST *node) {
-    llvm::errs() << node->getValue();
+    llvm::errs() << node->getValue().str();
 }
 
 void ASTDumper::dump(VarRefExprAST *node) {
@@ -70,7 +72,8 @@ void ASTDumper::dump(VarRefExprAST *node) {
 }
 
 void ASTDumper::dump(UnaryExprAST *node) {
-    llvm::errs() << node->getOp() << node->getOperand();
+    llvm::errs() << node->getOp();
+    dump(node->getOperand());
 }
 
 void ASTDumper::dump(BinaryExprAST *node) {
