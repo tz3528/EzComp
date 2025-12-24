@@ -21,6 +21,7 @@
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/StringSaver.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/ADT/StringRef.h"
 
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
@@ -98,7 +99,9 @@ private:
 private:
     std::unique_ptr<ExprAST> parseExpr(int minPrec = 0);
     std::unique_ptr<ExprAST> parseUnary();
+    std::unique_ptr<ExprAST> parseBinOpRHS(int minPrec,std::unique_ptr<ExprAST> lhs);
     std::unique_ptr<ExprAST> parsePrimary();
+    std::unique_ptr<ExprAST> parseSignedNumberLiteral(llvm::StringRef what);
     int getTokPrecedence() const;
 
 private:

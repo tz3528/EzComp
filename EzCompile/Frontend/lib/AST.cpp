@@ -22,7 +22,7 @@ namespace ezcompile {
 void ASTDumper::dump(ExprAST *expr) {
     llvm::TypeSwitch<ExprAST *>(expr)
           .Case<BinaryExprAST, CallExprAST, StringExprAST,
-                NumberExprAST, UnaryExprAST, VarRefExprAST>(
+                NumberExprAST, UnaryExprAST, VarRefExprAST,ParenExprAST>(
               [&](auto *node) { this->dump(node); })
           .Default([&](ExprAST *) {
             // No match, fallback to a generic message
@@ -33,12 +33,8 @@ void ASTDumper::dump(ExprAST *expr) {
 
 void ASTDumper::dump(VarDeclAST *node) {
     INDENT();
-    llvm::errs() << "VarDecl : " << node->getName();
-    if (node->getInit() != nullptr) {
-        llvm::errs() << " = ";
-        dump(node->getInit());
-    }
-    llvm::errs() << "\n";
+    llvm::errs() << "VarDecl : " << node->getName() <<" [" <<
+        node->getMinV() << ", " << node->getMaxV() << ", " << node->getNum() << "]\n";
 }
 
 void ASTDumper::dump(EquationAST *node) {
@@ -92,6 +88,12 @@ void ASTDumper::dump(CallExprAST *node) {
             llvm::errs() << ", ";
         }
     }
+    llvm::errs() << ")";
+}
+
+void ASTDumper::dump(ParenExprAST *node) {
+    llvm ::errs() << "(";
+    dump(node->getSub());
     llvm::errs() << ")";
 }
 

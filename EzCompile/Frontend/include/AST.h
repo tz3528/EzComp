@@ -60,6 +60,7 @@ public:
         Binary,
         Unary,
         Call,
+        Paren,
     };
 
     Kind getKind() const { return kind; }
@@ -178,6 +179,21 @@ private:
     ArgList args;
 };
 
+class ParenExprAST final
+    : public ExprBase<ParenExprAST, ExprAST::Kind::Paren> {
+public:
+    using ArgList = llvm::SmallVector<std::unique_ptr<ExprAST>, 4>;
+
+    ParenExprAST(std::unique_ptr<ExprAST> sub, SourceRange r)
+        : ExprBase(r),sub(std::move(sub)) {}
+
+    const ExprAST *getSub() const { return sub.get(); }
+    ExprAST *getSub() { return sub.get(); }
+
+private:
+    std::unique_ptr<ExprAST> sub;
+};
+
 //===----------------------------------------------------------------------===//
 // Top-level items (VarDecl / Equation / Option) + RTTI + CRTP
 //===----------------------------------------------------------------------===//
@@ -214,19 +230,25 @@ class VarDeclAST final
     : public ItemBase<VarDeclAST, ItemAST::Kind::VarDecl> {
 public:
     VarDeclAST(llvm::StringRef name,
-               std::unique_ptr<ExprAST> init,
+               std::unique_ptr<ExprAST> minV,
+               std::unique_ptr<ExprAST> maxV,
+               size_t num,
                SourceRange r)
-        : ItemBase(r),
-          name(name),
-          init(std::move(init)) {}
+        : ItemBase(r), name(name),
+          minV(std::move(minV)), maxV(std::move(maxV)), num(num) {}
 
     llvm::StringRef getName() const { return name; }
-    const ExprAST *getInit() const { return init.get(); }
-    ExprAST *getInit() { return init.get(); }
+    const ExprAST *getMinV() const { return minV.get(); }
+    const ExprAST *getMaxV() const { return maxV.get(); }
+    ExprAST *getMinV() { return minV.get(); }
+    ExprAST *getMaxV() { return maxV.get(); }
+    size_t getNum() const { return num; }
 
 private:
     llvm::StringRef name;
-    std::unique_ptr<ExprAST> init; // null => default 0
+    std::unique_ptr<ExprAST> minV;
+    std::unique_ptr<ExprAST> maxV;
+    long long num;
 };
 
 class EquationAST final
@@ -331,6 +353,15 @@ private:
     void dump(UnaryExprAST *node);
     void dump(BinaryExprAST *node);
     void dump(CallExprAST *node);
+    void dump(ParenExprAST *node);
+
+    static int getOpPrec(char op) {
+        switch (op) {
+        case '*': case '/': return 40;
+        case '+': case '-': return 20;
+        default: return -1;
+        }
+    }
 
     // Actually print spaces matching the current indentation level
     void indent() const {

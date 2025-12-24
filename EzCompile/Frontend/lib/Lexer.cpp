@@ -84,6 +84,8 @@ Token Lexer::lex() {
     case '}': return Token(Token::r_brace, loc, "}");
     case '(': return Token(Token::l_paren, loc, "(");
     case ')': return Token(Token::r_paren, loc, ")");
+    case '[': return Token(Token::l_square, loc, "[");
+    case ']': return Token(Token::r_square, loc, "]");
     case ';': return Token(Token::semicolon, loc, ";");
     case ',': return Token(Token::comma, loc, ",");
     case ':': return Token(Token::colon, loc, ":");

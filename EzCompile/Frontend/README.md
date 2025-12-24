@@ -7,45 +7,24 @@ comp语言由三部分构成，其大致结构如下
 
 ``` C++
 declarations {
-    x=0;
-    y=0;
+    x[0,100,101];
+    t[0,100,101];
 }
 equations {
-    x=diff(x,0)+y+2;
-    y=x-y-2;
+    diff(u(x,t),t,1)=100*diff(u(x,t),x,2);
+    diff(u(x,t),x,2)=(u(x-1,t)+u(x+1,t)-2*u(x,t))/delta(x,2);
+    u(x,0)=0;
+    u(0,t)=10;
+    u(100,t)=10;
 }
 options {
+    mode:"time-pde";
+    method:"FDM";
     precision:-6;
-    delta:-6;
-    length:1000;
+    timeVar:"t";
 }
 ```
 
-- declarations：这部分中用于声明变量，其中赋的值为方程中变量的初值。若为赋初值，则默认为0。
-- equations：这部分用于声明方程，其中每个变量最多被赋值一次，即一个变量最多在等式左边出现一次。若其未被赋值，则默认为常量。
-- options：这部分用于描述选项。其中Precision是结果 s的精度，delta为求解步长，length为迭代次数。前两者的等式右侧均是10的多少次幂。
-
-# BNF
-module := (section)* EOF
-
-section := declarationsSection | equationsSection | optionsSection
-
-declarationsSection := 'declarations' '{' declItem* '}'
-
-declItem := identifier ('=' expr)? ';'
-
-equationsSection := 'equations' '{' equationItem* '}'
-
-equationItem := expr '=' expr ';'     # lhs 允许是 expr（如 diff(x,2)）
-
-optionsSection := 'options' '{' optionItem* '}'
-
-optionItem := identifier ':' expr ';'
-
-expr 使用 precedence climbing：
-
-expr := unary (binop unary)*
-
-unary := ('+'|'-') unary | primary
-
-primary := number | identifier ( '(' args? ')' )? | '(' expr ')'
+- declarations：这部分中用于声明变量，其中三个参数分别为参数下界、参数上界、区间内取的参数个数。
+- equations：这部分用于声明方程。其中，在解时序方程时，默认u是待求函数，t时时间单位，用于求解。
+- options：这部分用于描述选项。其中mode用于表示解方程的类型，method用于表示求解方式，precision是精度 ,等式右侧表示是10的多少次幂。

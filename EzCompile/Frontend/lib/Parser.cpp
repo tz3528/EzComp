@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringExtras.h"
 
 #include "Parser.h"
 #include "AST.h"
@@ -58,8 +59,9 @@ Parser::Parser(Lexer &lexer, llvm::SourceMgr &sourceMgr, int bufferID, mlir::MLI
     // 默认 options 规则（可在外部增删改）
     options.setAllowUnknown(false);
     options.addNumber("precision");
-    options.addNumber("delta");
-    options.addNumber("length");
+    options.addString("mode",{"time-pde"});
+    options.addString("method",{"FDM"});
+    options.addString("timeVar");
 }
 
 void Parser::advance() {
@@ -201,18 +203,48 @@ std::unique_ptr<VarDeclAST> Parser::parseVarDeclItem() {
     llvm::SMLoc begin = nameTok.getLoc();
     advance();
 
-    std::unique_ptr<ExprAST> init;
+    // 新语法：必须有 [min,max,num]
+    if (!consume(Token::l_square, "expected '[' after variable name (use var[min,max,num])"))
+        return nullptr;
+
+    auto minV = parseSignedNumberLiteral("min");
+    if (!minV) return nullptr;
+
+    if (!consume(Token::comma, "expected ',' after min")) return nullptr;
+
+    auto maxV = parseSignedNumberLiteral("max");
+    if (!maxV) return nullptr;
+
+    if (!consume(Token::comma, "expected ',' after max")) return nullptr;
+
+    // num：建议限制为无符号整数（等分点个数）
+    Token numTok = curTok;
+    if (!curTok.is(Token::number)) {
+        emitError(curTok.getLoc(), "expected integer literal for num");
+        return nullptr;
+    }
+    advance();
+
+    if (!consume(Token::r_square, "expected ']' after num")) return nullptr;
+
+    // 如果你明确“声明不再允许 initializer”，这里直接报错更清晰
     if (curTok.is(Token::equal)) {
-        advance();
-        init = parseExpr();
-        if (!init) return nullptr;
+        emitError(curTok.getLoc(), "declaration initializer is not supported; use var[min,max,num] only");
+        // 你也可以选择：advance(); parseExpr(); 然后丢弃/或保存到 AST
     }
 
     Token semiTok = curTok;
     if (!consume(Token::semicolon, "expected ';' after declaration")) return nullptr;
 
+    // num 的整数校验（可选，但很推荐）
+    long long num = 0;
+    if (!llvm::to_integer(numTok.getSpelling(), num) || num <= 0) {
+        emitError(numTok.getLoc(), "num must be a positive integer");
+        // 继续构造也行，或者 return nullptr
+    }
+
     return std::make_unique<VarDeclAST>(
-        name, std::move(init),
+        name, std::move(minV), std::move(maxV), num,
         SourceRange(begin, tokenEndLoc(semiTok)));
 }
 
@@ -281,30 +313,7 @@ int Parser::getTokPrecedence() const {
 std::unique_ptr<ExprAST> Parser::parseExpr(int minPrec) {
     auto lhs = parseUnary();
     if (!lhs) return nullptr;
-
-    while (true) {
-        int prec = getTokPrecedence();
-        if (prec < minPrec) break;
-
-        Token opTok = curTok;
-        char op = opTok.getSpelling().empty() ? '?' : opTok.getSpelling().front();
-        advance();
-
-        auto rhs = parseUnary();
-        if (!rhs) return nullptr;
-
-        int nextPrec = getTokPrecedence();
-        if (prec < nextPrec) {
-            rhs = parseExpr(prec + 1);
-            if (!rhs) return nullptr;
-        }
-
-        lhs = std::make_unique<BinaryExprAST>(
-            op, std::move(lhs), std::move(rhs),
-            SourceRange(lhs->getBeginLoc(), rhs->getEndLoc()));
-    }
-
-    return lhs;
+    return parseBinOpRHS(minPrec, std::move(lhs));
 }
 
 std::unique_ptr<ExprAST> Parser::parseUnary() {
@@ -322,6 +331,37 @@ std::unique_ptr<ExprAST> Parser::parseUnary() {
             SourceRange(begin, operand->getEndLoc()));
     }
     return parsePrimary();
+}
+
+std::unique_ptr<ExprAST> Parser::parseBinOpRHS(int minPrec,
+                                               std::unique_ptr<ExprAST> lhs) {
+    while (true) {
+        int prec = getTokPrecedence();
+        if (prec < minPrec) return lhs; // 如果当前运算符的优先级低于最小优先级，直接返回 lhs
+
+        Token opTok = curTok;
+        char op = opTok.getSpelling().empty() ? '?' : opTok.getSpelling().front();
+        advance();  // 移动到下一个 token
+
+        auto rhs = parseUnary(); // 解析 rhs 部分
+        if (!rhs) return nullptr;
+
+        int nextPrec = getTokPrecedence(); // 获取 rhs 后一个运算符的优先级
+        if (prec < nextPrec) {
+            // 如果当前运算符的优先级小于下一个运算符的优先级，递归解析 rhs 后续的运算符
+            rhs = parseBinOpRHS(prec + 1, std::move(rhs));
+            if (!rhs) return nullptr;
+        }
+
+        // 计算当前运算符的开始和结束位置
+        auto beginLoc = lhs->getBeginLoc();
+        auto endLoc   = rhs->getEndLoc();
+
+        // 构造并返回新的二元运算 AST 节点
+        lhs = std::make_unique<BinaryExprAST>(
+            op, std::move(lhs), std::move(rhs),
+            SourceRange(beginLoc, endLoc));
+    }
 }
 
 std::unique_ptr<ExprAST> Parser::parsePrimary() {
@@ -389,12 +429,39 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
         if (!inner) return nullptr;
         Token rTok = curTok;
         if (!consume(Token::r_paren, "expected ')'")) return nullptr;
-        inner->setRange(SourceRange(lTok.getLoc(), tokenEndLoc(rTok)));
-        return inner;
+        return std::make_unique<ParenExprAST>(
+            std::move(inner),
+            SourceRange(lTok.getLoc(), tokenEndLoc(rTok)));
     }
 
     emitError(curTok.getLoc(), "expected expression");
     return nullptr;
+}
+
+std::unique_ptr<ExprAST> Parser::parseSignedNumberLiteral(llvm::StringRef what) {
+    llvm::SMLoc begin = curTok.getLoc();
+    char sign = 0;
+
+    if (curTok.is(Token::plus) || curTok.is(Token::minus)) {
+        sign = curTok.getSpelling().front();
+        advance();
+    }
+
+    if (!curTok.is(Token::number)) {
+        emitError(curTok.getLoc(), ("expected numeric literal for " + what).str());
+        return nullptr;
+    }
+
+    Token numTok = curTok;
+    advance();
+
+    StringRef lit = numTok.getSpelling();
+    auto number = std::make_unique<NumberExprAST>(lit, SourceRange(begin, tokenEndLoc(numTok)));
+    if (sign) {
+        return std::make_unique<UnaryExprAST>(
+            sign, std::move(number), SourceRange(begin, tokenEndLoc(numTok)));
+    }
+    return number;
 }
 
 //===----------------------------------------------------------------------===//
@@ -404,30 +471,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
 std::unique_ptr<ExprAST> Parser::parseOptionLiteral() {
     // number literal (允许前导 +/-，但整体仍视为“数字字面量”)
     if (curTok.is(Token::plus) || curTok.is(Token::minus) || curTok.is(Token::number)) {
-        llvm::SMLoc begin = curTok.getLoc();
-        char sign = 0;
-
-        if (curTok.is(Token::plus) || curTok.is(Token::minus)) {
-            sign = curTok.getSpelling().front();
-            advance();
-        }
-
-        if (!curTok.is(Token::number)) {
-            emitError(curTok.getLoc(), "expected numeric literal");
-            return nullptr;
-        }
-
-        Token numTok = curTok;
-        advance();
-
-        StringRef lit = numTok.getSpelling();
-        auto number = std::make_unique<NumberExprAST>(lit, SourceRange(begin, tokenEndLoc(numTok)));
-        if (sign) {
-            return std::make_unique<UnaryExprAST>(
-                sign, std::move(number),SourceRange(begin, tokenEndLoc(numTok)));
-        }
-
-        return number;
+        return parseSignedNumberLiteral("option");
     }
 
     // string literal
@@ -464,6 +508,13 @@ void Parser::validateOption(const Token &keyTok, const ExprAST *value) {
     std::string got;
     if (auto *n = llvm::dyn_cast<NumberExprAST>(value)) got = n->getLiteral().str();
     else if (auto *s = llvm::dyn_cast<StringExprAST>(value)) got = s->getValue().str();
+    else if (auto *u = llvm::dyn_cast<UnaryExprAST>(value)) {
+        if ((u->getOp() == '+' || u->getOp() == '-') &&
+            llvm::isa<NumberExprAST>(u->getOperand())) {
+            auto *nn = llvm::cast<NumberExprAST>(u->getOperand());
+            got = std::string(1, u->getOp()) + nn->getLiteral().str();
+        }
+    }
 
     for (auto &ok : rule->allowed) {
         if (got == ok) return;

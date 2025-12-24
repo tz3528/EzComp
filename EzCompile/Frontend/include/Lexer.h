@@ -53,6 +53,8 @@ public:
         r_brace,    // }
         l_paren,    // (
         r_paren,    // )
+        l_square,   // [
+        r_square,   // ]
         semicolon,  // ;
         comma,      // ,
         colon,      // :
