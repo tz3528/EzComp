@@ -109,8 +109,6 @@ private:
     std::unique_ptr<ExprAST> parseOptionLiteral();
     void validateOption(const Token &keyTok, const ExprAST *value);
 
-    llvm::StringRef intern(llvm::StringRef s) { return saver.save(s); }
-
     static bool isNumberLiteral(const ExprAST *e) {
         if (llvm::isa<NumberExprAST>(e)) return true;
         if (auto now = llvm::dyn_cast<UnaryExprAST>(e)) {
@@ -131,9 +129,6 @@ private:
 
     Token curTok;
     bool sawError = false;
-
-    llvm::BumpPtrAllocator alloc;
-    llvm::StringSaver saver;
 
     OptionRegistry options;
 };

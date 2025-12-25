@@ -33,8 +33,11 @@ void ASTDumper::dump(ExprAST *expr) {
 
 void ASTDumper::dump(VarDeclAST *node) {
     INDENT();
-    llvm::errs() << "VarDecl : " << node->getName() <<" [" <<
-        node->getMinV() << ", " << node->getMaxV() << ", " << node->getNum() << "]\n";
+    llvm::errs() << "VarDecl : " << node->getName() <<" [";
+    dump(node->getMinV());
+    llvm::errs() << ", ";
+    dump(node->getMaxV());
+    llvm::errs() << ", " << node->getNum() << "]\n";
 }
 
 void ASTDumper::dump(EquationAST *node) {

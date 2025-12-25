@@ -381,7 +381,6 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
         if (sp.size() >= 2 && sp.front() == '"' && sp.back() == '"') {
             sp = sp.drop_front().drop_back();
         }
-        sp = intern(sp);
 
         return std::make_unique<StringExprAST>(
             sp, SourceRange(t.getLoc(), tokenEndLoc(t)));
