@@ -13,5 +13,6 @@ options {
     mode:"time-pde";
     method:"FDM";
     precision:-6;
+    function:"u(x,t)";
     timeVar:"t";
 }

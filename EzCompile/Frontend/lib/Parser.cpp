@@ -20,29 +20,6 @@ namespace ezcompile {
 
 using llvm::StringRef;
 
-//===----------------------------------------------------------------------===//
-// OptionRegistry
-//===----------------------------------------------------------------------===//
-
-void OptionRegistry::addNumber(StringRef key, llvm::ArrayRef<StringRef> allowed) {
-    Rule r;
-    r.kind = ValueKind::Number;
-    for (auto v : allowed) r.allowed.push_back(v.str());
-    rules[key] = std::move(r);
-}
-
-void OptionRegistry::addString(StringRef key, llvm::ArrayRef<StringRef> allowed) {
-    Rule r;
-    r.kind = ValueKind::String;
-    for (auto v : allowed) r.allowed.push_back(v.str());
-    rules[key] = std::move(r);
-}
-
-const OptionRegistry::Rule *OptionRegistry::lookup(StringRef key) const {
-    auto it = rules.find(key);
-    if (it == rules.end()) return nullptr;
-    return &it->second;
-}
 
 //===----------------------------------------------------------------------===//
 // Parser
@@ -52,14 +29,6 @@ Parser::Parser(Lexer &lexer, llvm::SourceMgr &sourceMgr, int bufferID, mlir::MLI
     : lexer(lexer),
       DiagnosticBase(sourceMgr,bufferID,ctx){
     advance();
-
-    // 默认 options 规则（可在外部增删改）
-    options.setAllowUnknown(false);
-    options.addNumber("precision");
-    options.addString("mode",{"time-pde"});
-    options.addString("method",{"FDM"});
-    options.addString("function");
-    options.addString("timeVar");
 }
 
 void Parser::advance() {

@@ -21,6 +21,7 @@
 
 #include "EzCompile/Frontend/include/Parser.h"
 #include "EzCompile/Frontend/include/AST.h"
+#include "EzCompile/Frontend/include/Semantic.h"
 
 namespace cl = llvm::cl;
 
@@ -68,6 +69,14 @@ static std::unique_ptr<ezcompile::ParsedModule> parseInputFile(llvm::StringRef f
     if (!out->module) return nullptr;
 
     if (parser.hadError()) return nullptr;
+
+    ezcompile::Semantic semantic(out->sourceMgr,out->bufferID,&out->context);
+
+    out->sema = semantic.analyze(*out->module);
+
+    if (!out->sema) return nullptr;
+
+    if (semantic.hadError()) return nullptr;
 
     return out;
 }

@@ -38,39 +38,12 @@
 
 namespace ezcompile {
 
-class OptionRegistry {
-public:
-    enum class ValueKind : uint8_t {
-        Number,
-        String
-    };
-
-    struct Rule {
-        ValueKind kind = ValueKind::Number;
-        llvm::SmallVector<std::string, 8> allowed;   // 空 => 不限制具体取值
-    };
-
-    void setAllowUnknown(bool v) { allowUnknown = v; }
-    bool allowUnknownKeys() const { return allowUnknown; }
-
-    void addNumber(llvm::StringRef key, llvm::ArrayRef<llvm::StringRef> allowed = {});
-    void addString(llvm::StringRef key, llvm::ArrayRef<llvm::StringRef> allowed = {});
-
-    const Rule *lookup(llvm::StringRef key) const;
-
-private:
-    bool allowUnknown = false;
-    llvm::StringMap<Rule> rules;
-};
-
 class Parser : public DiagnosticBase {
 public:
     Parser(Lexer &lexer,
            llvm::SourceMgr &sourceMgr,
            int bufferID,
            mlir::MLIRContext *ctx);
-
-    OptionRegistry &getOptionRegistry() { return options; }
 
     std::unique_ptr<ModuleAST> parseModule();
 
@@ -124,15 +97,6 @@ private:
 
     Token curTok;
 
-    OptionRegistry options;
-};
-
-/// 用于存储解析结果和语法分析中的内容
-struct ParsedModule {
-    mlir::MLIRContext context;
-    llvm::SourceMgr sourceMgr;
-    int bufferID = 0;
-    std::unique_ptr<ezcompile::ModuleAST> module;
 };
 
 
