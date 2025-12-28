@@ -34,6 +34,7 @@
 
 #include "Lexer.h"
 #include "AST.h"
+#include "DiagnosticBase.h"
 
 namespace ezcompile {
 
@@ -62,7 +63,7 @@ private:
     llvm::StringMap<Rule> rules;
 };
 
-class Parser {
+class Parser : public DiagnosticBase {
 public:
     Parser(Lexer &lexer,
            llvm::SourceMgr &sourceMgr,
@@ -73,11 +74,8 @@ public:
 
     std::unique_ptr<ModuleAST> parseModule();
 
-    bool hadError() const { return sawError || lexer.hadError(); }
-
 private:
     void advance();
-    void emitError(llvm::SMLoc loc, llvm::StringRef msg);
 
     bool consume(Token::Kind k, llvm::StringRef msg);
     bool expect(Token::Kind k, llvm::StringRef msg) const;
@@ -123,12 +121,8 @@ private:
 
 private:
     Lexer &lexer;
-    llvm::SourceMgr &sourceMgr;
-    int bufferID = 0;
-    mlir::MLIRContext *ctx = nullptr;
 
     Token curTok;
-    bool sawError = false;
 
     OptionRegistry options;
 };

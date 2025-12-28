@@ -50,10 +50,7 @@ const OptionRegistry::Rule *OptionRegistry::lookup(StringRef key) const {
 
 Parser::Parser(Lexer &lexer, llvm::SourceMgr &sourceMgr, int bufferID, mlir::MLIRContext *ctx)
     : lexer(lexer),
-      sourceMgr(sourceMgr),
-      bufferID(bufferID),
-      ctx(ctx),
-      saver(alloc) {
+      DiagnosticBase(sourceMgr,bufferID,ctx){
     advance();
 
     // 默认 options 规则（可在外部增删改）
@@ -61,6 +58,7 @@ Parser::Parser(Lexer &lexer, llvm::SourceMgr &sourceMgr, int bufferID, mlir::MLI
     options.addNumber("precision");
     options.addString("mode",{"time-pde"});
     options.addString("method",{"FDM"});
+    options.addString("function");
     options.addString("timeVar");
 }
 
@@ -71,19 +69,6 @@ void Parser::advance() {
 llvm::SMLoc Parser::tokenEndLoc(const Token &t) {
     const char *p = t.getLoc().getPointer();
     return llvm::SMLoc::getFromPointer(p + t.getSpelling().size());
-}
-
-void Parser::emitError(llvm::SMLoc loc, StringRef msg) {
-    sawError = true;
-    if (!ctx) {
-        sourceMgr.PrintMessage(loc, llvm::SourceMgr::DK_Error, msg);
-        return;
-    }
-    auto lineCol = sourceMgr.getLineAndColumn(loc, bufferID);
-    auto *buf = sourceMgr.getMemoryBuffer(bufferID);
-    StringRef file = buf ? buf->getBufferIdentifier() : "<input>";
-    auto flc = mlir::FileLineColLoc::get(ctx, file, lineCol.first, lineCol.second);
-    mlir::emitError(flc) << msg;
 }
 
 bool Parser::expect(Token::Kind k, StringRef msg) const {
