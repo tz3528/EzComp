@@ -237,8 +237,6 @@ std::unique_ptr<OptionAST> Parser::parseOptionItem() {
     auto lit = parseOptionLiteral();
     if (!lit) return nullptr;
 
-    validateOption(keyTok, lit.get());
-
     Token semiTok = curTok;
     if (!consume(Token::semicolon, "expected ';' after option")) return nullptr;
 
@@ -436,44 +434,5 @@ std::unique_ptr<ExprAST> Parser::parseOptionLiteral() {
     return nullptr;
 }
 
-void Parser::validateOption(const Token &keyTok, const ExprAST *value) {
-    StringRef key = keyTok.getSpelling();
-    const auto *rule = options.lookup(key);
-
-    if (!rule) {
-        if (!options.allowUnknownKeys()) {
-            emitError(keyTok.getLoc(), "unknown option key: '" + key.str() + "'");
-        }
-        return;
-    }
-
-    if (rule->kind == OptionRegistry::ValueKind::Number && !isNumberLiteral(value)) {
-        emitError(keyTok.getLoc(), "option '" + key.str() + "' expects number literal");
-        return;
-    }
-    if (rule->kind == OptionRegistry::ValueKind::String && !isStringLiteral(value)) {
-        emitError(keyTok.getLoc(), "option '" + key.str() + "' expects string literal");
-        return;
-    }
-
-    if (rule->allowed.empty()) return;
-
-    std::string got;
-    if (auto *n = llvm::dyn_cast<NumberExprAST>(value)) got = n->getLiteral().str();
-    else if (auto *s = llvm::dyn_cast<StringExprAST>(value)) got = s->getValue().str();
-    else if (auto *u = llvm::dyn_cast<UnaryExprAST>(value)) {
-        if ((u->getOp() == '+' || u->getOp() == '-') &&
-            llvm::isa<NumberExprAST>(u->getOperand())) {
-            auto *nn = llvm::cast<NumberExprAST>(u->getOperand());
-            got = std::string(1, u->getOp()) + nn->getLiteral().str();
-        }
-    }
-
-    for (auto &ok : rule->allowed) {
-        if (got == ok) return;
-    }
-
-    emitError(keyTok.getLoc(), "invalid value for option '" + key.str() + "'");
-}
 
 }

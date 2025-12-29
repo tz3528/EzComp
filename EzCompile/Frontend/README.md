@@ -21,10 +21,30 @@ options {
     mode:"time-pde";
     method:"FDM";
     precision:-6;
+    function:"u(x,t)";
     timeVar:"t";
 }
 ```
 
 - declarations：这部分中用于声明变量，其中三个参数分别为参数下界、参数上界、区间内取的参数个数。
-- equations：这部分用于声明方程。其中，在解时序方程时，默认u是待求函数，t时时间单位，用于求解。
+- equations：这部分用于声明方程。
 - options：这部分用于描述选项。其中mode用于表示解方程的类型，method用于表示求解方式，precision是精度 ,等式右侧表示是10的多少次幂。
+
+program        := declarations_block equations_block options_block ;
+
+declarations_block := "declarations" "{" { declaration_stmt } "}" ;
+declaration_stmt   := IDENT "[" INT "," INT "," INT "]" ";" ;
+
+equations_block := "equations" "{" { equation_stmt } "}" ;
+equation_stmt   := expr "=" expr ";" ;
+
+options_block := "options" "{" { option_stmt } "}" ;
+option_stmt   := IDENT ":" option_value ";" ;
+option_value  := STRING | INT | FLOAT ;
+
+expr := term { ("+"|"-") term } ;
+term := factor { ("*"|"/") factor } ;
+factor := INT | FLOAT | IDENT | call | "(" expr ")" ;
+
+call := IDENT "(" [ arglist ] ")" ;
+arglist := expr { "," expr } ;
