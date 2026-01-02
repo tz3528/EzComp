@@ -54,8 +54,9 @@ protected:
 class ExprAST : public ASTNode {
 public:
     enum Kind : uint8_t {
-        Number,
         String,
+        Integer,
+        Float,
         VarRef,
         Binary,
         Unary,
@@ -81,18 +82,6 @@ protected:
     explicit ExprBase(SourceRange r) : ExprAST(K, r) {}
 };
 
-class NumberExprAST final
-    : public ExprBase<NumberExprAST, ExprAST::Kind::Number> {
-public:
-    NumberExprAST(llvm::StringRef literal, SourceRange r)
-        : ExprBase(r), literal(literal) {}
-
-    llvm::StringRef getLiteral() const { return literal; }
-
-private:
-    llvm::StringRef literal;
-};
-
 class StringExprAST final
     : public ExprBase<StringExprAST, ExprAST::Kind::String> {
 public:
@@ -103,6 +92,30 @@ public:
 
 private:
     llvm::StringRef value;
+};
+
+class IntExprAST final
+    : public ExprBase<IntExprAST, ExprAST::Kind::Integer> {
+public:
+    IntExprAST(int64_t value, SourceRange r)
+        : ExprBase(r), value(value) {}
+
+    int64_t getValue() const { return value; }
+
+private:
+    int64_t value;
+};
+
+class FloatExprAST final
+    : public ExprBase<FloatExprAST, ExprAST::Kind::Float> {
+public:
+    FloatExprAST(int64_t value, SourceRange r)
+        : ExprBase(r), value(value) {}
+
+    double getValue() const { return value; }
+
+private:
+    double value;
 };
 
 class VarRefExprAST final
@@ -347,8 +360,9 @@ private:
     void dump(VarDeclAST *node);
     void dump(EquationAST *node);
     void dump(OptionAST *node);
-    void dump(NumberExprAST *node);
     void dump(StringExprAST *node);
+    void dump(IntExprAST *node);
+    void dump(FloatExprAST *node);
     void dump(VarRefExprAST *node);
     void dump(UnaryExprAST *node);
     void dump(BinaryExprAST *node);

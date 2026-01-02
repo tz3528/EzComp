@@ -81,10 +81,11 @@ private:
     void validateOption(const Token &keyTok, const ExprAST *value);
 
     static bool isNumberLiteral(const ExprAST *e) {
-        if (llvm::isa<NumberExprAST>(e)) return true;
+        if (llvm::isa<IntExprAST>(e)||llvm::isa<FloatExprAST>(e)) return true;
         if (auto now = llvm::dyn_cast<UnaryExprAST>(e)) {
             auto op = now->getOp();
-            if ((op=='+'||op=='-')&&llvm::isa<NumberExprAST>(now->getOperand())) {
+            if ((op=='+'||op=='-')&&
+                (llvm::isa<IntExprAST>(now->getOperand())||llvm::isa<FloatExprAST>(now->getOperand()))) {
                 return true;
             }
         }

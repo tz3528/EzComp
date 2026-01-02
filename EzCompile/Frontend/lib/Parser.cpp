@@ -320,9 +320,21 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
     if (curTok.is(Token::number)) {
         Token t = curTok;
         advance();
-        return std::make_unique<NumberExprAST>(
-            t.getSpelling(),
-            SourceRange(t.getLoc(), tokenEndLoc(t)));
+        const StringRef s = t.getSpelling();
+        const bool isFloat =
+            (s.find('.') != std::string::npos) ||
+            (s.find('e') != std::string::npos) ||
+            (s.find('E') != std::string::npos);
+
+        if (isFloat) {
+            double result;
+            s.getAsDouble(result);
+            return std::make_unique<FloatExprAST>(result, SourceRange(t.getLoc(), tokenEndLoc(t)));
+        } else {
+            int64_t result;
+            s.getAsInteger(10, result);
+            return std::make_unique<IntExprAST>(result,SourceRange(t.getLoc(), tokenEndLoc(t)));
+        }
     }
 
     if (curTok.is(Token::string)) {
@@ -407,7 +419,21 @@ std::unique_ptr<ExprAST> Parser::parseSignedNumberLiteral(llvm::StringRef what) 
     advance();
 
     StringRef lit = numTok.getSpelling();
-    auto number = std::make_unique<NumberExprAST>(lit, SourceRange(begin, tokenEndLoc(numTok)));
+    const bool isFloat =
+            (lit.find('.') != std::string::npos) ||
+            (lit.find('e') != std::string::npos) ||
+            (lit.find('E') != std::string::npos);
+    std::unique_ptr<ExprAST> number;
+    if (isFloat) {
+        double result;
+        lit.getAsDouble(result);
+        number = std::make_unique<FloatExprAST>(result, SourceRange(begin, tokenEndLoc(numTok)));
+    }
+    else {
+        int64_t result;
+        lit.getAsInteger(10, result);
+        number = std::make_unique<IntExprAST>(result, SourceRange(begin, tokenEndLoc(numTok)));
+    }
     if (sign) {
         return std::make_unique<UnaryExprAST>(
             sign, std::move(number), SourceRange(begin, tokenEndLoc(numTok)));
