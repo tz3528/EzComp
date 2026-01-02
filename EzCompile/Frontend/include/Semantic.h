@@ -16,43 +16,12 @@
 
 #include "Parser.h"
 #include "DiagnosticBase.h"
+#include "OptionTable.h"
 
 namespace ezcompile {
 // ====== SemanticResult ===============
 
-using SymbolId = uint32_t;
-
-// ------------------------------
-// 1) 选项表 OptionsTable
-// ------------------------------
-struct OptionsTable {
-	// 原始 options：保留扩展性（未来新增 option 不破坏结构）
-	struct Value {
-		enum class Kind { Str, Int, Float } kind;
-
-		std::string s;
-		int64_t i = 0;
-		double f = 0.0;
-	};
-
-	// raw["mode"] = "time-pde" 等
-	std::unordered_map<std::string, Value> raw;
-
-	// 下列是 lowering 常用的“已解析字段”（你 examples 中出现过）
-	std::string mode;       // 求解模式，目前只支持时序方程求解
-	std::string method;     // 求解方法，目前只支持有限差分法
-	int precisionExp10 = 0; // e.g. -6 表示 10^(-6) 的精度语义
-
-	// function:"u(x,t)" 解析后的结构（给 lowering 不用再拆字符串）
-	struct FunctionSig {
-		std::string name;              // "u"
-		std::vector<std::string> args; // ["x","t"]
-		std::string text;              // 原始文本 "u(x,t)"，便于 debug/打印
-	} targetFunc;
-
-	// timeVar:"t"：用于识别时间维（loop 嵌套/初始化条件识别）
-	std::string timeVar;
-};
+using SymbolId = uint64_t;
 
 // ------------------------------
 // 2) 符号表 SymbolTable
@@ -188,8 +157,8 @@ public:
 	std::unique_ptr<SemanticResult> analyze(const ModuleAST& module);
 
 private:
-	SymbolTable collectDecls(const ModuleAST& module);
-	void checkOptions(const ModuleAST& module);
+	SymbolTable collectDecls(const ModuleAST& module, SymbolTable& st);
+	void checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTable& opts);
 	void checkEquations(const ModuleAST& module);
 
 	static bool getInteger(ExprAST* expr, int64_t &result);

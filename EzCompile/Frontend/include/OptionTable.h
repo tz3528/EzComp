@@ -15,13 +15,10 @@
 #define OPTIONTABLE_H
 
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Operation.h"
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Error.h"
-#include "llvm/Support/FormatVariadic.h"
 
 #include <functional>
 #include <string>

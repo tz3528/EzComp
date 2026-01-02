@@ -15,13 +15,15 @@
 namespace ezcompile {
 
 std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
-	SymbolTable st = collectDecls(module);
-	checkOptions(module);
+	SymbolTable st;
+	OptionsTable opt;
+	EquationGroups eg;
+	collectDecls(module, st);
+	checkOptions(module, st, opt);
 	checkEquations(module);
 }
 
-SymbolTable Semantic::collectDecls(const ModuleAST& module) {
-	SymbolTable st;
+SymbolTable Semantic::collectDecls(const ModuleAST& module, SymbolTable& st) {
 	SymbolId id = 0;
 	for (const auto &decl : module.getDecls()) {
 		auto name = decl->getName().str();
@@ -80,18 +82,40 @@ void Semantic::checkEquations(const ModuleAST& module) {
 
 }
 
-void Semantic::checkOptions(const ModuleAST& module) {
+void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTable& opts) {
+	std::string err;
+	mlir::LogicalResult result = mlir::success();
+	int64_t valInt;
+	double valDouble;
 
+	for (auto & option : module.getOptions()) {
+		auto key = option->getKey().str();
+		auto expr = option->getValue();
+
+		if (auto value = llvm::dyn_cast<StringExprAST>(expr)) {
+			result = opts.set(key, value->getValue().str(),err);
+		}
+		else if (getInteger(expr, valInt)) {
+			result = opts.set(key, valInt, err);
+		}
+		else if (getFloat(expr, valDouble)) {
+			result = opts.set(key, valDouble, err);
+		}
+
+		if (failed(result)) {
+			emitError(expr->getBeginLoc(), err);
+		}
+	}
 }
 
 bool Semantic::getInteger(ExprAST* expr, int64_t &result) {
-	if (auto *num = llvm::dyn_cast<NumberExprAST>(expr)) {
-		return !num->getLiteral().getAsInteger(10, result);
+	if (auto *num = llvm::dyn_cast<IntExprAST>(expr)) {
+		result = num->getValue();
+		return true;
 	}
 	if (auto *unNum = llvm::dyn_cast<UnaryExprAST>(expr)) {
-		if (auto *num = llvm::dyn_cast<NumberExprAST>(unNum->getOperand())) {
-			bool error = num->getLiteral().getAsInteger(10, result);
-			if (error) return false;
+		if (auto *num = llvm::dyn_cast<IntExprAST>(unNum->getOperand())) {
+			result = num->getValue();
 			if (unNum->getOp() == '-') {
 				result = -result;
 			}
@@ -102,13 +126,13 @@ bool Semantic::getInteger(ExprAST* expr, int64_t &result) {
 }
 
 bool Semantic::getFloat(ExprAST* expr, double &result) {
-	if (auto *num = llvm::dyn_cast<NumberExprAST>(expr)) {
-		return !num->getLiteral().getAsDouble(result);
+	if (auto *num = llvm::dyn_cast<FloatExprAST>(expr)) {
+		result = num->getValue();
+		return true;
 	}
 	if (auto *unNum = llvm::dyn_cast<UnaryExprAST>(expr)) {
-		if (auto *num = llvm::dyn_cast<NumberExprAST>(unNum->getOperand())) {
-			bool error = num->getLiteral().getAsDouble(result);
-			if (error) return false;
+		if (auto *num = llvm::dyn_cast<FloatExprAST>(unNum->getOperand())) {
+			result = num->getValue();
 			if (unNum->getOp() == '-') {
 				result = -result;
 			}
