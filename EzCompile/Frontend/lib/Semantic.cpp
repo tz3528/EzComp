@@ -17,7 +17,15 @@ namespace ezcompile {
 std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 	SymbolTable st;
 	OptionsTable opt;
+
+	auto result = OptionsTable::createWithDefaults();
+	if (!result) {
+		return nullptr;
+	}
+	opt = *result;
+
 	EquationGroups eg;
+
 	collectDecls(module, st);
 	checkOptions(module, st, opt);
 	checkEquations(module);
@@ -130,7 +138,7 @@ void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts)
 		emitError(expr->getBeginLoc(), "No function name");
 		return ;
 	}
-	if (left <= function.size() - 1) {
+	if (right > function.size() - 1) {
 		emitError(expr->getBeginLoc(),"There are extra characters");
 		return;
 	}
