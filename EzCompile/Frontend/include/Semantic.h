@@ -160,6 +160,7 @@ private:
 	SymbolTable collectDecls(const ModuleAST& module, SymbolTable& st);
 	void checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTable& opts);
 	void checkEquations(const ModuleAST& module);
+	void checkFunction(ExprAST* expr, SymbolTable& st, OptionsTable& opts);
 
 	static bool getInteger(ExprAST* expr, int64_t &result);
 	static bool getFloat(ExprAST* expr, double &result);

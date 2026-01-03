@@ -72,16 +72,16 @@ public:
     static std::string valueTypeName(const Value &v);
     static bool sameKind(const Value &a, const Value &b);
 
-private:
-    //用于记录所有的选项
-    llvm::StringMap<Spec> specs_;
-
     //记录待求函数的信息
     struct FunctionSig {
         std::string name;                   //函数名
         std::vector<std::string> args;      //函数参数
         std::string text;                   //对应的文本
     } targetFunc;
+
+private:
+    //用于记录所有的选项
+    llvm::StringMap<Spec> specs_;
 };
 
 }

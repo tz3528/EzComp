@@ -92,6 +92,11 @@ void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTab
 		auto key = option->getKey().str();
 		auto expr = option->getValue();
 
+		if (key == "function") {
+			checkFunction(expr, st, opts);
+			continue;
+		}
+
 		if (auto value = llvm::dyn_cast<StringExprAST>(expr)) {
 			result = opts.set(key, value->getValue().str(),err);
 		}
@@ -105,6 +110,51 @@ void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTab
 		if (failed(result)) {
 			emitError(expr->getBeginLoc(), err);
 		}
+	}
+}
+
+void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts) {
+	auto e = llvm::dyn_cast<StringExprAST>(expr);
+	if (!e) {
+		emitError(expr->getBeginLoc(), "Function name must be a string");
+		return;
+	}
+
+	std::string function = e->getValue().str();
+	opts.targetFunc.text = function;
+
+	auto left = function.find('(');
+	auto right = function.find(')');
+
+	if (left == 0) {
+		emitError(expr->getBeginLoc(), "No function name");
+		return ;
+	}
+	if (left <= function.size() - 1) {
+		emitError(expr->getBeginLoc(),"There are extra characters");
+		return;
+	}
+
+	std::string name = function.substr(0,left);
+	opts.targetFunc.name = name;
+
+	size_t begin = left + 1;
+	size_t end = left + 1;
+	size_t count = 0;
+
+	while (end <= right) {
+		while (end != ',' && end <= right) end++;
+		auto arg = function.substr(begin, end - begin);
+
+		if (st.lookup(arg) == nullptr) {
+			emitError(expr->getBeginLoc(), "There is an undeclared variable in the function");
+			return ;
+		}
+
+		opts.targetFunc.args.emplace_back(arg);
+		count++;
+		begin = end + 1;
+		end = begin;
 	}
 }
 
