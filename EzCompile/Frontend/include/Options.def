@@ -21,7 +21,7 @@ OPT_STR(
     oneOfStrings({"FDM"})
 )
 OPT_INT(
-    precisionExp10,
+    precision,
     0,
     any()
 )
