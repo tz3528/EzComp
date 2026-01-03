@@ -29,6 +29,8 @@ std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 	collectDecls(module, st);
 	checkOptions(module, st, opt);
 	checkEquations(module);
+
+	return std::make_unique<SemanticResult>(opt, st, eg);
 }
 
 SymbolTable Semantic::collectDecls(const ModuleAST& module, SymbolTable& st) {
@@ -151,11 +153,11 @@ void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts)
 	size_t count = 0;
 
 	while (end <= right) {
-		while (end != ',' && end <= right) end++;
+		while (function[end] != ',' && end < right) end++;
 		auto arg = function.substr(begin, end - begin);
 
 		if (st.lookup(arg) == nullptr) {
-			emitError(expr->getBeginLoc(), "There is an undeclared variable in the function");
+			emitError(expr->getBeginLoc(), arg + "is an undeclared variable in the function");
 			return ;
 		}
 

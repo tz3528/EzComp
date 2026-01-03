@@ -93,6 +93,10 @@ mlir::LogicalResult OptionsTable::registerOption(std::string name, Spec &spec) {
             return mlir::failure();
         }
     }
+    else {
+        llvm::errs() << "No Checker " + name;
+        return mlir::failure();
+    }
 
     specs_[name] = std::move(spec);
     return mlir::success();
@@ -108,6 +112,11 @@ mlir::LogicalResult OptionsTable::set(std::string name, Value v, std::string &er
             valueTypeName(v) + "type";
         return mlir::failure();
     }
+    if (auto ans = specs_[name].check(v)) {
+        err = llvm::toString(std::move(ans));
+        return mlir::failure();
+    }
+
     specs_[name].value = std::move(v);
     return mlir::success();
 }
@@ -151,20 +160,23 @@ mlir::FailureOr<double> OptionsTable::getFloat(std::string name, std::string &er
 // ---------------- Validators ----------------
 
 OptionsTable::CheckFn OptionsTable::any() {
-    return nullptr;
+    return [](const Value &v) -> llvm::Error {
+        return llvm::Error::success();
+    };
 }
 
 OptionsTable::CheckFn OptionsTable::oneOfStrings(std::initializer_list<std::string> allowed) {
-    return [allowed](const Value &v) -> llvm::Error {
+    std::vector<std::string> allowedVec(allowed.begin(), allowed.end());
+    return [allowedVec = std::move(allowedVec)](const Value &v) -> llvm::Error {
         const auto &s = std::get<std::string>(v);
 
-        for (const auto &a : allowed) {
+        for (const auto &a : allowedVec) {
             if (a == s) return llvm::Error::success();
         }
 
         std::string msg = "must be one of: ";
         bool first = true;
-        for (const auto &a : allowed) {
+        for (const auto &a : allowedVec) {
             if (!first) msg += ", ";
             first = false;
             msg += a;
@@ -175,16 +187,17 @@ OptionsTable::CheckFn OptionsTable::oneOfStrings(std::initializer_list<std::stri
 }
 
 OptionsTable::CheckFn OptionsTable::oneOfInt64(std::initializer_list<int64_t> allowed) {
-    return [allowed](const Value &v) -> llvm::Error {
+    std::vector<int64_t> allowedVec(allowed.begin(), allowed.end());
+    return [allowedVec = std::move(allowedVec)](const Value &v) -> llvm::Error {
         const auto &x = std::get<int64_t>(v);
 
-        for (auto a : allowed) {
+        for (auto a : allowedVec) {
             if (a == x) return llvm::Error::success();
         }
 
         std::string msg = "must be one of: ";
         bool first = true;
-        for (auto a : allowed) {
+        for (auto a : allowedVec) {
             if (!first) msg += ", ";
             first = false;
             msg += std::to_string(a);
@@ -196,16 +209,17 @@ OptionsTable::CheckFn OptionsTable::oneOfInt64(std::initializer_list<int64_t> al
 }
 
 OptionsTable::CheckFn OptionsTable::oneOfFloat(std::initializer_list<double> allowed) {
-    return [allowed](const Value &v) -> llvm::Error {
+    std::vector<double> allowedVec(allowed.begin(), allowed.end());
+    return [allowedVec = std::move(allowedVec)](const Value &v) -> llvm::Error {
         const auto &x = std::get<double>(v);
 
-        for (auto a : allowed) {
+        for (auto a : allowedVec) {
             if (a == x) return llvm::Error::success();
         }
 
         std::string msg = "must be one of: ";
         bool first = true;
-        for (auto a : allowed) {
+        for (auto a : allowedVec) {
             if (!first) msg += ", ";
             first = false;
             msg += std::to_string(a);
