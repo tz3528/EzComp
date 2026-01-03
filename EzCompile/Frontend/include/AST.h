@@ -64,7 +64,10 @@ public:
         Paren,
     };
 
+    virtual ~ExprAST() = default;
+
     Kind getKind() const { return kind; }
+    virtual std::string toString() const = 0;
 
 protected:
     ExprAST(Kind k, SourceRange r) : ASTNode(r), kind(k) {}
@@ -89,6 +92,9 @@ public:
         : ExprBase(r), value(value) {}
 
     llvm::StringRef getValue() const { return value; }
+    std::string toString() const override {
+        return value.str();
+    }
 
 private:
     llvm::StringRef value;
@@ -101,6 +107,9 @@ public:
         : ExprBase(r), value(value) {}
 
     int64_t getValue() const { return value; }
+    std::string toString() const override {
+        return std::to_string(value);
+    }
 
 private:
     int64_t value;
@@ -113,6 +122,9 @@ public:
         : ExprBase(r), value(value) {}
 
     double getValue() const { return value; }
+    std::string toString() const override {
+        return std::to_string(value);
+    }
 
 private:
     double value;
@@ -125,6 +137,9 @@ public:
         : ExprBase(r), name(name) {}
 
     llvm::StringRef getName() const { return name; }
+    std::string toString() const override {
+        return name.str();
+    }
 
 private:
     llvm::StringRef name;
@@ -141,6 +156,9 @@ public:
     char getOp() const { return op; }
     const ExprAST *getOperand() const { return operand.get(); }
     ExprAST *getOperand() { return operand.get(); }
+    std::string toString() const override {
+        return std::to_string(getOp()) + operand->toString();
+    }
 
 private:
     char op;
@@ -164,6 +182,9 @@ public:
     const ExprAST *getRHS() const { return rhs.get(); }
     ExprAST *getLHS() { return lhs.get(); }
     ExprAST *getRHS() { return rhs.get(); }
+    std::string toString() const override {
+        return lhs->toString() + std::to_string(op)+ rhs->toString();
+    }
 
 private:
     char op;
@@ -186,6 +207,16 @@ public:
     llvm::StringRef getCallee() const { return callee; }
     const ArgList &getArgs() const { return args; }
     ArgList &getArgs() { return args; }
+    std::string toString() const override {
+        std::string ans = callee.str();
+        ans += "(";
+        for (size_t i = 0; i < args.size(); ++i) {
+            ans += args[i]->toString();
+            if (i != args.size() - 1) ans += ", ";
+        }
+        ans += ")";
+        return ans;
+    }
 
 private:
     llvm::StringRef callee;
@@ -202,6 +233,9 @@ public:
 
     const ExprAST *getSub() const { return sub.get(); }
     ExprAST *getSub() { return sub.get(); }
+    std::string toString() const override {
+        return "(" + sub->toString() + ")";
+    }
 
 private:
     std::unique_ptr<ExprAST> sub;
