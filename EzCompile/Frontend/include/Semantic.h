@@ -159,7 +159,8 @@ public:
 private:
 	SymbolTable collectDecls(const ModuleAST& module, SymbolTable& st);
 	void checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTable& opts);
-	void checkEquations(const ModuleAST& module);
+	void checkEquations(const ModuleAST& module, SymbolTable& st, OptionsTable& opts, EquationGroups &eg);
+	void checkEquation(const EquationAST * equation,const CallExprAST * call, SymbolTable& st, OptionsTable& opts, EquationGroups &eg);
 	void checkFunction(ExprAST* expr, SymbolTable& st, OptionsTable& opts);
 
 	static bool getInteger(ExprAST* expr, int64_t &result);

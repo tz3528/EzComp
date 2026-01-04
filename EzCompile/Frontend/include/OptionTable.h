@@ -77,6 +77,7 @@ public:
         std::string name;                   //函数名
         std::vector<std::string> args;      //函数参数
         std::string text;                   //对应的文本
+        int64_t index = -1;                 //时序变量对应的参数下标
     } targetFunc;
 
 private:

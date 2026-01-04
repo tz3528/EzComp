@@ -28,7 +28,7 @@ std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 
 	collectDecls(module, st);
 	checkOptions(module, st, opt);
-	checkEquations(module);
+	checkEquations(module, st, opt, eg);
 
 	return std::make_unique<SemanticResult>(opt, st, eg);
 }
@@ -88,9 +88,149 @@ SymbolTable Semantic::collectDecls(const ModuleAST& module, SymbolTable& st) {
 	return st;
 }
 
-void Semantic::checkEquations(const ModuleAST& module) {
+void Semantic::checkEquations(const ModuleAST& module, SymbolTable& st, OptionsTable& opts, EquationGroups &eg) {
 
+	for (auto & equation : module.getEquations()) {
+		auto left = equation->getLHS();
+		if (auto call = llvm::dyn_cast<CallExprAST>(left)) {
+			auto name = call->getCallee().str();
+
+			if (name == opts.targetFunc.name) {
+				checkEquation(equation.get(), call, st, opts, eg);
+			}
+			else {
+				//非目标函数在等式左侧，为普通方程
+				eg.iter.emplace_back(equation.get());
+			}
+		}
+		else {
+			//等式左侧不是函数，只能是普通方程
+			eg.iter.emplace_back(equation.get());
+		}
+	}
 }
+
+void Semantic::checkEquation(
+	const EquationAST * equation,
+	const CallExprAST * call,
+	SymbolTable& st,
+	OptionsTable& opts,
+	EquationGroups &eg
+	) {
+	std::string err;
+	std::string time = *opts.getStr("timeVar",err);
+
+	auto &args = call->getArgs();
+	if (call->getArgs().size() != opts.targetFunc.args.size()) {
+		//参数不一样多
+		emitError(equation->getBeginLoc(),
+		"The number of parameters in the targetFunction does not match");
+		return ;
+	}
+
+	//用于记录方程类型
+	bool isBoundary = false;
+	bool isIteration = false;
+	bool isInit = false;
+	for (size_t i = 0; i < opts.targetFunc.args.size(); ++i) {
+		auto var = args[i].get();
+		if (i == opts.targetFunc.index) {
+			//时间变量的结构必须是t、t+1或字面量常量
+			if (auto timeVar = llvm::dyn_cast<VarRefExprAST>(var)) {
+				if (timeVar->getName() != time) {
+					emitError(var->getBeginLoc(),
+						"The th " + std::to_string(i) + " parameter must be a timeVar");
+					return ;
+				}
+			}
+			else if (auto timeAddVar = llvm::dyn_cast<BinaryExprAST>(var)) {
+				if (timeAddVar->toString() != time + "+1") {
+					emitError(var->getBeginLoc(),
+						"The th " + std::to_string(i) + " parameter must be a timeVar");
+					return ;
+				}
+				//t+1是迭代方程
+				isIteration = true;
+			}
+			else if (auto num = llvm::dyn_cast<IntExprAST>(var)){
+				auto value = num->getValue();
+				auto sb = st.lookup(time);
+				if (value < sb->domain->lower || value > sb->domain->upper) {
+					emitError(var->getBeginLoc(),"The time variable exceeds the declared range");
+					return ;
+				}
+				isInit = true;
+			}
+			else {
+				//可能是浮点数
+				emitError(var->getBeginLoc(),
+							"The th " + std::to_string(i) + " parameter must be a timeVar");
+				return ;
+			}
+		}
+		else {
+			//这里不是时间变量
+			if (auto anotherVar = llvm::dyn_cast<VarRefExprAST>(var)) {
+				if (anotherVar->getName() != opts.targetFunc.args[i]) {
+					emitError(var->getBeginLoc(),
+						"The th " + std::to_string(i) + " parameter no match");
+					return ;
+				}
+			}
+			else if (auto num = llvm::dyn_cast<IntExprAST>(var)) {
+				auto value = num->getValue();
+				auto sb = st.lookup(opts.targetFunc.args[i]);
+				if (value < sb->domain->lower || value > sb->domain->upper) {
+					emitError(var->getBeginLoc(),"The time variable exceeds the declared range");
+					return ;
+				}
+				isBoundary = true;
+			}
+			else if (auto bop = llvm::dyn_cast<BinaryExprAST>(var)) {
+				auto op = bop->getOp();
+				auto lhs = bop->getLHS();
+				auto rhs = bop->getRHS();
+				if (op != '+' && op != '-') {
+					emitError(var->getBeginLoc(),"The operator must is '+' or '-'");
+					return ;
+				}
+
+				if (auto selfVar = llvm::dyn_cast<VarRefExprAST>(lhs)) {
+					if (selfVar->getName() != opts.targetFunc.args[i]) {
+						emitError(lhs->getBeginLoc(),
+							"The th " + std::to_string(i) + " parameter no match");
+						return ;
+					}
+					if (!llvm::isa<IntExprAST>(rhs)) {
+						emitError(rhs->getBeginLoc(),"rhs must is a Interger");
+						return ;
+					}
+					isIteration = true;
+				}
+				else {
+					emitError(lhs->getBeginLoc(),"The left must is a var");
+					return ;
+				}
+			}
+			else {
+				emitError(equation->getBeginLoc(),"function is undefine");
+			}
+		}
+	}
+	if (isIteration && !isBoundary && !isInit) {
+		eg.iter.emplace_back(equation);
+	}
+	else if (!isIteration && isBoundary && !isInit) {
+		eg.boundary.emplace_back(equation);
+	}
+	else if (!isIteration && !isBoundary && isInit) {
+		eg.init.emplace_back(equation);
+	}
+	else {
+		emitError(equation->getBeginLoc(),"equation have more than two type");
+	}
+}
+
 
 void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTable& opts) {
 	std::string err;
@@ -121,6 +261,29 @@ void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTab
 			emitError(expr->getBeginLoc(), err);
 		}
 	}
+
+	auto timeVar = *opts.getStr("timeVar",err);
+
+	if (st.lookup(timeVar) == nullptr) {
+		emitError(module.getEndLoc(), "timeVar undeclared");
+		return ;
+	}
+
+	for (size_t i = 0; i < opts.targetFunc.args.size(); ++i) {
+		if (opts.targetFunc.args[i] == timeVar) {
+			if (opts.targetFunc.index == -1) {
+				opts.targetFunc.index = i;
+			}
+			else {
+				emitError(module.getEndLoc(), "targetFunction have two timeVar");
+				return ;
+			}
+		}
+	}
+	if (opts.targetFunc.index == -1) {
+		emitError(module.getEndLoc(), "targetFunction no timeVar");
+	}
+	return ;
 }
 
 void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts) {
@@ -157,7 +320,7 @@ void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts)
 		auto arg = function.substr(begin, end - begin);
 
 		if (st.lookup(arg) == nullptr) {
-			emitError(expr->getBeginLoc(), arg + "is an undeclared variable in the function");
+			emitError(expr->getBeginLoc(), arg + " is an undeclared variable in the function");
 			return ;
 		}
 
