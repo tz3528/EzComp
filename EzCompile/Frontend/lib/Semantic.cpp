@@ -96,10 +96,12 @@ void Semantic::checkEquations(const ModuleAST& module, SymbolTable& st, OptionsT
 			auto name = call->getCallee().str();
 
 			if (name == opts.targetFunc.name) {
-				checkEquation(equation.get(), call, st, opts, eg);
+				checkFunctionType(equation.get(), call, st, opts, eg);
 			}
 			else {
 				//非目标函数在等式左侧，为普通方程
+				//TODO 这里应该对普通方程也有检查，
+				//但是需要加东西，暂时不做处理
 				eg.iter.emplace_back(equation.get());
 			}
 		}
@@ -110,7 +112,7 @@ void Semantic::checkEquations(const ModuleAST& module, SymbolTable& st, OptionsT
 	}
 }
 
-void Semantic::checkEquation(
+void Semantic::checkFunctionType(
 	const EquationAST * equation,
 	const CallExprAST * call,
 	SymbolTable& st,
@@ -123,7 +125,7 @@ void Semantic::checkEquation(
 	auto &args = call->getArgs();
 	if (call->getArgs().size() != opts.targetFunc.args.size()) {
 		//参数不一样多
-		emitError(equation->getBeginLoc(),
+		emitError(call->getBeginLoc(),
 		"The number of parameters in the targetFunction does not match");
 		return ;
 	}
@@ -213,7 +215,7 @@ void Semantic::checkEquation(
 				}
 			}
 			else {
-				emitError(equation->getBeginLoc(),"function is undefine");
+				emitError(call->getBeginLoc(),"function is undefine");
 			}
 		}
 	}
