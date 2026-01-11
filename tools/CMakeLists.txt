@@ -18,6 +18,7 @@ set_target_properties(ezcomp PROPERTIES
 target_link_libraries(ezcomp PRIVATE
         # --- 项目库 ---
         Frontend
+        Midend
 
         # --- 其他 MLIR 基础库 ---
         MLIROptLib

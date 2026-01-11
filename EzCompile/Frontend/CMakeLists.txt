@@ -4,7 +4,7 @@
 # 假设您的实现代码在当前目录下的 lib 文件夹中 (根据之前的截图)
 file(GLOB_RECURSE SRCS "lib/*.cpp")
 
-# 2. 定义库目标 (EzFrontend)
+# 2. 定义库目标 (Frontend)
 add_library(Frontend ${SRCS})
 
 # 3. 设置头文件路径 (PUBLIC 让链接这个库的人也能看到这些头文件)
