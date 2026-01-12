@@ -32,28 +32,13 @@ struct Domain {
 	int64_t lower = 0.0; // 下界
 	int64_t upper = 0.0; // 上界
 	uint64_t points = 0;  // 点数 N
-
-	// 均匀网格步长
-	// step = (upper - lower) / (points - 1)  (points>=2)
-	double step = 0.0;
-};
-
-enum class SymbolKind {
-	IndependentVar,  // 来自 declarations 的自变量：x / t ...
-	UnknownFunction, // 来自 options.function 的未知函数：u ...
-	// 未来可扩展：Parameter / Constant / Builtin(diff/delta) 等
 };
 
 struct Symbol {
 	SymbolId id = 0;
 	std::string name;
-	SymbolKind kind = SymbolKind::IndependentVar;
 
-	// 对 IndependentVar：domain 必填
-	std::optional<Domain> domain;
-
-	// 对 UnknownFunction：参数名列表（从 options.function 解析）
-	std::vector<std::string> params;
+	Domain domain;
 };
 
 struct SymbolTable {
@@ -94,10 +79,7 @@ struct TargetFunctionMeta {
 	std::vector<SymbolId> spaceDims; // [x] 或 [x,y]
 };
 
-// ------------------------------------------------------
-// 可选但你现在认可：Anchor（用于 init/boundary 落到切片/索引）
-// ------------------------------------------------------
-// 目的：当你把 PDE lowering 成循环或张量操作时，
+// Anchor：当你把 PDE lowering 成循环或张量操作时，
 //       需要把 u(0,t) 映射为 U[0, :]，把 u(100,t) 映射为 U[N-1, :]。
 //       这类信息如果在 sema 阶段算好，中端不用再扫 LHS/对照 declarations 推导一次。
 enum class BoundarySide { Min, Max };

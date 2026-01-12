@@ -71,13 +71,11 @@ SymbolTable Semantic::collectDecls(const ModuleAST& module, SymbolTable& st) {
 		Symbol symbol;
 		symbol.id = id;
 		symbol.name = name;
-		symbol.kind = SymbolKind::IndependentVar;
 
 		Domain dom;
 		dom.lower = lower;
 		dom.upper = upper;
 		dom.points = points;
-		dom.step = static_cast<double>(upper - lower) / static_cast<double>(points - 1);
 		symbol.domain = dom;
 
 		st.nameToId.emplace(name, id);
@@ -157,7 +155,7 @@ void Semantic::checkFunctionType(
 			else if (auto num = llvm::dyn_cast<IntExprAST>(var)){
 				auto value = num->getValue();
 				auto sb = st.lookup(time);
-				if (value < sb->domain->lower || value > sb->domain->upper) {
+				if (value < sb->domain.lower || value > sb->domain.upper) {
 					emitError(var->getBeginLoc(),"The time variable exceeds the declared range");
 					return ;
 				}
@@ -182,7 +180,7 @@ void Semantic::checkFunctionType(
 			else if (auto num = llvm::dyn_cast<IntExprAST>(var)) {
 				auto value = num->getValue();
 				auto sb = st.lookup(opts.targetFunc.args[i]);
-				if (value < sb->domain->lower || value > sb->domain->upper) {
+				if (value < sb->domain.lower || value > sb->domain.upper) {
 					emitError(var->getBeginLoc(),"The time variable exceeds the declared range");
 					return ;
 				}
