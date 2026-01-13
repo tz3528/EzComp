@@ -37,7 +37,6 @@ struct Domain {
 struct Symbol {
 	SymbolId id = 0;
 	std::string name;
-
 	Domain domain;
 };
 
@@ -54,15 +53,25 @@ struct SymbolTable {
 	const Symbol& get(SymbolId id) const { return symbols[id]; }
 };
 
+struct Anchor {
+	SymbolId dim = 0;                 // 被固定的维度
+	uint64_t index;     // 若能落到均匀网格索引：0 或 N-1（或 t 的 0）
+};
+
+struct EquationAnchor {
+	const EquationAST* eq;
+	Anchor anchor;
+};
+
 // ------------------------------------------------------
 // 3/4/5) 方程分组 EquationGroups
 // ------------------------------------------------------
 struct EquationGroups {
 	// 初始化方程列表：如 u(x,0)=0;
-	std::vector<const EquationAST*> init;
+	std::vector<EquationAnchor> init;
 
 	// 边界方程列表：如 u(0,t)=10; u(100,t)=10;
-	std::vector<const EquationAST*> boundary;
+	std::vector<EquationAnchor> boundary;
 
 	// 每次迭代的普通方程：如 PDE 主方程/离散模板等
 	std::vector<const EquationAST*> iter;
@@ -77,27 +86,6 @@ struct TargetFunctionMeta {
 	SymbolId funcSym = 0;            // u
 	SymbolId timeDim = 0;            // t
 	std::vector<SymbolId> spaceDims; // [x] 或 [x,y]
-};
-
-// Anchor：当你把 PDE lowering 成循环或张量操作时，
-//       需要把 u(0,t) 映射为 U[0, :]，把 u(100,t) 映射为 U[N-1, :]。
-//       这类信息如果在 sema 阶段算好，中端不用再扫 LHS/对照 declarations 推导一次。
-enum class BoundarySide { Min, Max };
-
-// 一个“维度被固定为常量”的锚点信息（只服务 init/boundary，不泛化到所有方程）
-struct Anchor {
-	SymbolId dim = 0;                 // 被固定的维度
-	double value = 0.0;               // 固定值
-	std::optional<BoundarySide> side; // 若 value==domain.lower/upper，则分别为 Min/Max
-	std::optional<int64_t> index;     // 若能落到均匀网格索引：0 或 N-1（或 t 的 0）
-};
-
-// 针对 init/boundary 方程的锚点缓存：
-// - init：通常 anchors 里含 {dim=t, value=0, index=0}
-// - boundary：通常 anchors 里含 {dim=x, value=0/100, side=Min/Max, index=0/N-1}
-struct AnchorTable {
-	// 注意：key 用 AST 指针即可（语义分析阶段已经分组并持有指针）
-	std::unordered_map<const EquationAST*, std::vector<Anchor>> anchorsOf;
 };
 
 // ------------------------------------------------------
@@ -115,9 +103,6 @@ struct SemanticResult {
 
 	// Optional：目标函数与维度角色
 	std::optional<TargetFunctionMeta> target;
-
-	// Optional：init/boundary 的 锚点表
-	std::optional<AnchorTable> anchorTable;
 };
 
 /// 用于存储解析结果和语法分析中的内容

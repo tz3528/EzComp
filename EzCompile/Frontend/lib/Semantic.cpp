@@ -132,6 +132,7 @@ void Semantic::checkFunctionType(
 	bool isBoundary = false;
 	bool isIteration = false;
 	bool isInit = false;
+	Anchor anchor{1ULL << 63, 0};
 	for (size_t i = 0; i < opts.targetFunc.args.size(); ++i) {
 		auto var = args[i].get();
 		if (i == opts.targetFunc.index) {
@@ -159,6 +160,8 @@ void Semantic::checkFunctionType(
 					emitError(var->getBeginLoc(),"The time variable exceeds the declared range");
 					return ;
 				}
+				anchor.dim = i;
+				anchor.index = num->getValue();
 				isInit = true;
 			}
 			else {
@@ -184,6 +187,8 @@ void Semantic::checkFunctionType(
 					emitError(var->getBeginLoc(),"The time variable exceeds the declared range");
 					return ;
 				}
+				anchor.dim = i;
+				anchor.index = num->getValue();
 				isBoundary = true;
 			}
 			else if (auto bop = llvm::dyn_cast<BinaryExprAST>(var)) {
@@ -217,6 +222,11 @@ void Semantic::checkFunctionType(
 			}
 		}
 	}
+
+	if (anchor.dim = 1ULL << 63) {
+		emitError(equation->getBeginLoc(),"anchor is uninitialized");
+	}
+
 	if (isIteration && !isBoundary && !isInit) {
 		eg.iter.emplace_back(equation);
 	}
