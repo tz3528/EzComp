@@ -223,18 +223,19 @@ void Semantic::checkFunctionType(
 		}
 	}
 
-	if (anchor.dim = 1ULL << 63) {
+	if (anchor.dim == 1ULL << 63) {
 		emitError(equation->getBeginLoc(),"anchor is uninitialized");
 	}
+
 
 	if (isIteration && !isBoundary && !isInit) {
 		eg.iter.emplace_back(equation);
 	}
 	else if (!isIteration && isBoundary && !isInit) {
-		eg.boundary.emplace_back(equation);
+		eg.boundary.emplace_back(EquationAnchor{equation, anchor});
 	}
 	else if (!isIteration && !isBoundary && isInit) {
-		eg.init.emplace_back(equation);
+		eg.init.emplace_back(EquationAnchor{equation, anchor});
 	}
 	else {
 		emitError(equation->getBeginLoc(),"equation have more than two type");
@@ -293,7 +294,6 @@ void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTab
 	if (opts.targetFunc.index == -1) {
 		emitError(module.getEndLoc(), "targetFunction no timeVar");
 	}
-	return ;
 }
 
 void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts) {
