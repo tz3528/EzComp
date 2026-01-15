@@ -54,9 +54,8 @@ body 内必须包含：`comp.dim`（至少一个维度）、`comp.field`（至�
 
 声明要解的未知函数，以及空间维/时间维角色。
 
-- `timeDim` 必须引用已声明的 `comp.dim`。
+- `timeDim` 必须引用已声明的 `comp.dim`。不应出现在 `spaceDims` 中。
 - `spaceDims` 列表中的每个维度必须引用已声明的 `comp.dim`。
-- `timeDim` 不应出现在 `spaceDims` 中。
 
 ### 3.4 `comp.points`
 
@@ -192,12 +191,12 @@ comp.problem attributes {
   } boundary {
   
     // u(0,t) = 10
-    %b0 = comp.dirichlet %u anchors=[#comp.anchor<dim=@x, side=Min, index=0>] {
+    %b0 = comp.dirichlet %u anchors=[#comp.anchor<dim=@x, index=0>] {
       comp.yield 10.0 : f64
     } : !comp.boundary
 
     // u(100,t) = 10
-    %b1 = comp.dirichlet %u anchors=[#comp.anchor<dim=@x, side=Max, index=100>] {
+    %b1 = comp.dirichlet %u anchors=[#comp.anchor<dim=@x, index=100>] {
       comp.yield 10.0 : f64
     } : !comp.boundary
 
