@@ -13,8 +13,6 @@
 
 include "mlir/IR/DialectBase.td"
 include "mlir/IR/AttrTypeBase.td"
-include "mlir/IR/BuiltinTypes.td"
-include "mlir/IR/BuiltinAttributes.td"
 
 //===----------------------------------------------------------------------===//
 // Dialect

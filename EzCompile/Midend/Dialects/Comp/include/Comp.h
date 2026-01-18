@@ -1,4 +1,4 @@
-//===-- CompDialect.h ------------------------------------------*- C++ -*-===//
+//===-- Comp.h -------------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,12 +11,10 @@
 //===----------------------------------------------------------------------===//
 
 
-#ifndef EZ_COMPILE_COMP_DIALECT_H
-#define EZ_COMPILE_COMP_DIALECT_H
+#ifndef EZ_COMPILE_COMP_H
+#define EZ_COMPILE_COMP_H
 
-#include "mlir/IR/Dialect.h"
+#include "CompDialect.h"
+#include "CompOps.h"
 
-// 引入方言
-#include "CompDialect.h.inc"
-
-#endif //EZ_COMPILE_COMP_DIALECT_H
+#endif //EZ_COMPILE_COMP_H
