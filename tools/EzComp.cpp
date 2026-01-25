@@ -62,15 +62,17 @@ static std::unique_ptr<ezcompile::ParsedModule> parseInputFile(llvm::StringRef f
         out->sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc())
     );
 
-    ezcompile::Lexer lexer(out->sourceMgr, out->bufferID, &out->context);
-    ezcompile::Parser parser(lexer, out->sourceMgr, out->bufferID, &out->context);
+    auto ctx = mlir::MLIRContext();
+
+    ezcompile::Lexer lexer(out->sourceMgr, out->bufferID, &ctx);
+    ezcompile::Parser parser(lexer, out->sourceMgr, out->bufferID, &ctx);
 
     out->module = parser.parseModule();
     if (!out->module) return nullptr;
 
     if (parser.hadError()) return nullptr;
 
-    ezcompile::Semantic semantic(out->sourceMgr,out->bufferID,&out->context);
+    ezcompile::Semantic semantic(out->sourceMgr,out->bufferID,&ctx);
 
     out->sema = semantic.analyze(*out->module);
 

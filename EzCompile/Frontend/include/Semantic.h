@@ -107,7 +107,6 @@ struct SemanticResult {
 
 /// 用于存储解析结果和语法分析中的内容
 struct ParsedModule {
-	mlir::MLIRContext context;
 	llvm::SourceMgr sourceMgr;
 	int bufferID = 0;
 	std::unique_ptr<ModuleAST> module;
