@@ -22,6 +22,7 @@
 #include "EzCompile/Frontend/include/Parser.h"
 #include "EzCompile/Frontend/include/AST.h"
 #include "EzCompile/Frontend/include/Semantic.h"
+#include "EzCompile/Midend/IRGen/include/MLIRGen.h"
 
 namespace cl = llvm::cl;
 
@@ -97,6 +98,33 @@ static int dumpAST() {
     return 0;
 }
 
+static int dumpMLIR() {
+    if (inputType == InputType::MLIR) {
+        llvm::errs() << "Can't dump a Comp AST when the input is MLIR\n";
+        return 5;
+    }
+
+    auto moduleAST = parseInputFile(inputFilename);
+    if (!moduleAST)
+        return 1;
+
+    auto pm = moduleAST.get();
+    mlir::MLIRContext context;
+
+    context.getOrLoadDialect<ezcompile::comp::CompDialect>();
+
+    ezcompile::MLIRGen gen(*pm, context);
+    auto mo = gen.mlirGen();
+
+    if (mlir::failed(mo)) {
+        return 2;
+    }
+
+    gen.print(llvm::outs());
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     mlir::DialectRegistry registry;
 
@@ -108,6 +136,8 @@ int main(int argc, char **argv) {
     switch (emitAction) {
     case Action::DumpAST:
         return dumpAST();
+    case Action::DumpMLIR:
+        return dumpMLIR();
     default:
         llvm::errs() << "No action specified (parsing only?), use -emit=<action>\n";
     }

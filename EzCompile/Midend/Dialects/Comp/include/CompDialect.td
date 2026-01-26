@@ -27,6 +27,10 @@ def Comp_Dialect : Dialect {
     let description = [{
         Comp方言是中端的最高级方言，仅用作承接前端的抽象语法树和语义分析结果
     }];
+
+    // 识别自定义类型
+    let useDefaultTypePrinterParser = 1;
+    let useDefaultAttributePrinterParser = 1;
 }
 
 //===----------------------------------------------------------------------===//

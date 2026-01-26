@@ -80,7 +80,7 @@ def DimOp : Comp_Op<"dim", [Symbol]> {
 
 // %u = comp.field @u (spaceDims=[@x, ...], timeDim=@t) : !comp.field<f64>
 
-def FieldOp : Comp_Op<"field", [Symbol]> {
+def FieldOp : Comp_Op<"field", []> {
     let summary = "Declare an unknown function (field) handle.";
 
     let arguments = (ins

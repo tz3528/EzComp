@@ -82,6 +82,7 @@ struct EquationGroups {
 // - 时间维符号（t）
 // - 空间维符号（x、y…）
 struct TargetFunctionMeta {
+	std::string func;
 	SymbolId timeDim = 0;            // t
 	std::vector<SymbolId> spaceDims; // [x] 或 [x,y]
 };
@@ -94,7 +95,7 @@ struct SemanticResult {
 	OptionsTable options;
 
 	// 2) 符号表（Core）
-	SymbolTable symbols;
+	SymbolTable st;
 
 	// 3/4/5) 初始化/边界/迭代方程指针列表（Core）
 	EquationGroups eqs;

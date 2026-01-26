@@ -32,11 +32,17 @@ std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 
 	TargetFunctionMeta tfm;
 
-	tfm.timeDim = opt.targetFunc.index;
 	for (size_t i = 0; i < opt.targetFunc.args.size(); i++) {
-		if (i == opt.targetFunc.index) continue;
-		tfm.spaceDims.emplace_back(i);
+		auto id = st.lookup(opt.targetFunc.args[i])->id;
+		if (i == opt.targetFunc.index) {
+			tfm.timeDim = id;
+		}
+		else {
+			tfm.spaceDims.emplace_back(id);
+		}
+
 	}
+	tfm.func = opt.targetFunc.name;
 
 	return std::make_unique<SemanticResult>(opt, st, eg,tfm);
 }
