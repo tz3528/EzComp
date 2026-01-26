@@ -54,8 +54,8 @@ struct SymbolTable {
 };
 
 struct Anchor {
-	SymbolId dim = 0;                 // 被固定的维度
-	uint64_t index;     // 若能落到均匀网格索引：0 或 N-1（或 t 的 0）
+	std::vector<SymbolId> dim;                 // 被固定的维度
+	std::vector<uint64_t> index;     // 若能落到均匀网格索引：0 或 N-1（或 t 的 0）
 };
 
 struct EquationAnchor {
@@ -98,7 +98,7 @@ struct SemanticResult {
 	SymbolTable st;
 
 	// 3/4/5) 初始化/边界/迭代方程指针列表（Core）
-	EquationGroups eqs;
+	EquationGroups egs;
 
 	// Optional：目标函数与维度角色
 	std::optional<TargetFunctionMeta> target;
