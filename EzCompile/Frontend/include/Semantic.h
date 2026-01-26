@@ -79,11 +79,9 @@ struct EquationGroups {
 
 // ------------------------------------------------------
 // TargetFunctionMeta
-// - 目标未知函数符号（u）
 // - 时间维符号（t）
 // - 空间维符号（x、y…）
 struct TargetFunctionMeta {
-	SymbolId funcSym = 0;            // u
 	SymbolId timeDim = 0;            // t
 	std::vector<SymbolId> spaceDims; // [x] 或 [x,y]
 };

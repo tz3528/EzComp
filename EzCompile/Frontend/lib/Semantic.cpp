@@ -30,7 +30,15 @@ std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 	checkOptions(module, st, opt);
 	checkEquations(module, st, opt, eg);
 
-	return std::make_unique<SemanticResult>(opt, st, eg);
+	TargetFunctionMeta tfm;
+
+	tfm.timeDim = opt.targetFunc.index;
+	for (size_t i = 0; i < opt.targetFunc.args.size(); i++) {
+		if (i == opt.targetFunc.index) continue;
+		tfm.spaceDims.emplace_back(i);
+	}
+
+	return std::make_unique<SemanticResult>(opt, st, eg,tfm);
 }
 
 SymbolTable Semantic::collectDecls(const ModuleAST& module, SymbolTable& st) {

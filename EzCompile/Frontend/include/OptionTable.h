@@ -72,6 +72,16 @@ public:
     static std::string valueTypeName(const Value &v);
     static bool sameKind(const Value &a, const Value &b);
 
+public:
+    // --- 迭代器 ---
+    auto begin() const {
+        return specs_.begin();
+    }
+
+    auto end() const {
+        return specs_.end();
+    }
+
     //记录待求函数的信息
     struct FunctionSig {
         std::string name;                   //函数名
