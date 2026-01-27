@@ -5,6 +5,7 @@ declarations {
 equations {
     diff(u(x,t),t,1)=100*diff(u(x,t),x,2);
     diff(u(x,t),x,2)=(u(x-1,t)+u(x+1,t)-2*u(x,t))/delta(x,2);
+    u(x,t+1) = u(x,t) + diff(u(x,t),t,1) * delta(x,1);
     u(x,0)=0;
     u(0,t)=10;
     u(100,t)=10;

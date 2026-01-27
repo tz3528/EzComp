@@ -1,0 +1,23 @@
+declarations {
+    x[0,50,51];
+    y[0,50,51];
+    t[0,100,101];
+}
+equations {
+    diff(u(x,y,t),t,1)=0.5*(diff(u(x,y,t),x,2)+diff(u(x,y,t),y,2));
+    diff(u(x,y,t),x,2)=(u(x-1,y,t)+u(x+1,y,t)-2*u(x,y,t))/delta(x,2);
+    diff(u(x,y,t),y,2)=(u(x,y-1,t)+u(x,y+1,t)-2*u(x,y,t))/delta(y,2);
+    u(x,y,t+1) = u(x,y,t) + diff(u(x,y,t),t,1) * delta(t,1);
+    u(x,y,0)=0;
+    u(0,y,t)=100;
+    u(50,y,t)=0;
+    u(x,0,t)=100;
+    u(x,50,t)=0;
+}
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,y,t)";
+    timeVar:"t";
+}
