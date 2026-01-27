@@ -183,7 +183,7 @@ public:
     ExprAST *getLHS() { return lhs.get(); }
     ExprAST *getRHS() { return rhs.get(); }
     std::string toString() const override {
-        return lhs->toString() + std::to_string(op)+ rhs->toString();
+        return lhs->toString() + std::string(1, op)+ rhs->toString();
     }
 
 private:

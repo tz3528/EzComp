@@ -149,6 +149,7 @@ void Semantic::checkFunctionType(
 	Anchor anchor;
 	for (size_t i = 0; i < opts.targetFunc.args.size(); ++i) {
 		auto var = args[i].get();
+		auto id = st.lookup(opts.targetFunc.args[i])->id;
 		if (i == opts.targetFunc.index) {
 			//时间变量的结构必须是t、t+1或字面量常量
 			if (auto timeVar = llvm::dyn_cast<VarRefExprAST>(var)) {
@@ -174,7 +175,7 @@ void Semantic::checkFunctionType(
 					emitError(var->getBeginLoc(),"The time variable exceeds the declared range");
 					return ;
 				}
-				anchor.dim.emplace_back(i);
+				anchor.dim.emplace_back(id);
 				anchor.index.emplace_back(num->getValue());
 				isInit = true;
 			}
@@ -201,7 +202,7 @@ void Semantic::checkFunctionType(
 					emitError(var->getBeginLoc(),"The time variable exceeds the declared range");
 					return ;
 				}
-				anchor.dim.emplace_back(i);
+				anchor.dim.emplace_back(id);
 				anchor.index.emplace_back(num->getValue());
 				isBoundary = true;
 			}
@@ -237,18 +238,19 @@ void Semantic::checkFunctionType(
 		}
 	}
 
-	if (anchor.dim.size() == 0) {
-		emitError(equation->getBeginLoc(),"anchor is uninitialized");
-	}
-
-
 	if (isIteration && !isBoundary && !isInit) {
 		eg.iter.emplace_back(equation);
 	}
 	else if (!isIteration && isBoundary && !isInit) {
+		if (anchor.dim.empty()) {
+			emitError(equation->getBeginLoc(),"anchor is uninitialized");
+		}
 		eg.boundary.emplace_back(EquationAnchor{equation, anchor});
 	}
 	else if (!isIteration && !isBoundary && isInit) {
+		if (anchor.dim.empty()) {
+			emitError(equation->getBeginLoc(),"anchor is uninitialized");
+		}
 		eg.init.emplace_back(EquationAnchor{equation, anchor});
 	}
 	else {

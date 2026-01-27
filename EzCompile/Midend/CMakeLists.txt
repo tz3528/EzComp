@@ -14,6 +14,11 @@ llvm_map_components_to_libnames(llvm_libs
 # 3. 链接 LLVM 库和编译器前端
 target_link_libraries(Midend PUBLIC ${llvm_libs})
 target_link_libraries(Midend PUBLIC Frontend)
+target_link_libraries(Midend PUBLIC
+        MLIRIR
+        MLIRSupport
+        MLIRArithDialect
+)
 
 # 收集头文件
 target_include_directories(Midend PUBLIC

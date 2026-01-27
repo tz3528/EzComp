@@ -63,12 +63,12 @@ private:
 	mlir::LogicalResult genDim(comp::ProblemOp problem);
 	mlir::FailureOr<mlir::Value> genField(comp::ProblemOp problem);
 	mlir::LogicalResult genSolve(comp::ProblemOp problem, mlir::Value field);
-	mlir::LogicalResult genApplyInit(comp::ProblemOp problem);
-	mlir::LogicalResult genDirichlet(comp::ProblemOp problem);
-	mlir::LogicalResult genForTime(comp::ProblemOp problem);
-	mlir::LogicalResult genUpdate(comp::ProblemOp problem);
-	mlir::LogicalResult genSample(comp::ProblemOp problem);
-	mlir::LogicalResult genEnforceBoundary(comp::ProblemOp problem);
+	mlir::LogicalResult genApplyInit(comp::SolveOp solve, mlir::Value field);
+	mlir::LogicalResult genDirichlet(comp::SolveOp solve);
+	mlir::LogicalResult genForTime(comp::SolveOp solve);
+	mlir::LogicalResult genUpdate(comp::SolveOp solve);
+	mlir::LogicalResult genSample(comp::SolveOp solve);
+	mlir::LogicalResult genEnforceBoundary(comp::SolveOp solve);
 
 	//===--------------------------------------------------------------------===//
 	// Region helper：终结符
@@ -79,7 +79,6 @@ private:
 	// 表达式生成
 	//===--------------------------------------------------------------------===//
 	mlir::FailureOr<mlir::Value> genExpr(const ExprAST * expr);
-	mlir::FailureOr<mlir::Value> genStringExpr(const StringExprAST * expr);
 	mlir::FailureOr<mlir::Value> genIntExpr(const IntExprAST * expr);
 	mlir::FailureOr<mlir::Value> genFloatExpr(const FloatExprAST * expr);
 	mlir::FailureOr<mlir::Value> genVarRefExpr(const VarRefExprAST * expr);
@@ -92,32 +91,32 @@ private:
 	mlir::FailureOr<mlir::Value> genPoints(mlir::Location loc,
 										  mlir::Value value,
 										  int64_t index);
-	mlir::FailureOr<mlir::Value> genDelta(mlir::Location loc,
-										 mlir::Value value,
-										 int64_t size,
-										 int64_t index);
 
 	/// 报错接口
-	void emitError(llvm::SMLoc loc, llvm::StringRef msg) {
+	mlir::LogicalResult emitError(llvm::SMLoc loc, llvm::StringRef msg) {
 		// loc 无效：只能打印纯文本
 		if (!loc.isValid()) {
 			llvm::errs() << "error: " << msg << "\n";
-			return;
+			return mlir::failure();
 		}
 
 		unsigned bufID = pm.sourceMgr.FindBufferContainingLoc(loc);
 		if (bufID == 0) {
 			llvm::errs() << "error: " << msg << "\n";
-			return;
+			return mlir::failure();
 		}
 
 		pm.sourceMgr.PrintMessage(loc, llvm::SourceMgr::DK_Error, msg);
+		return mlir::failure();
 	}
 
 	const ParsedModule &pm;
 	mlir::MLIRContext &context;
 	mlir::OpBuilder builder;
 	mlir::ModuleOp IRModule;
+
+	llvm::DenseMap<SymbolId, mlir::Value> dimIndexEnv; // dim -> index value
+	llvm::DenseMap<SymbolId, mlir::Value> dimCoordEnv; // dim -> f64 coord value
 };
 
 }

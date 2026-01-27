@@ -23,6 +23,7 @@
 #include "EzCompile/Frontend/include/AST.h"
 #include "EzCompile/Frontend/include/Semantic.h"
 #include "EzCompile/Midend/IRGen/include/MLIRGen.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 
 namespace cl = llvm::cl;
 
@@ -112,6 +113,7 @@ static int dumpMLIR() {
     mlir::MLIRContext context;
 
     context.getOrLoadDialect<ezcompile::comp::CompDialect>();
+    context.getOrLoadDialect<mlir::arith::ArithDialect>();
 
     ezcompile::MLIRGen gen(*pm, context);
     auto mo = gen.mlirGen();

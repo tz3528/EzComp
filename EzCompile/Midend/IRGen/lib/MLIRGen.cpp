@@ -10,9 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "IRGen/include/MLIRGen.h"
-
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+
+#include "IRGen/include/MLIRGen.h"
 
 namespace ezcompile {
 
@@ -70,12 +71,10 @@ mlir::FailureOr<comp::ProblemOp> MLIRGen::genProblem() {
 
 	// -------- 0) 基本前置条件检查（避免空指针）--------
 	if (!pm.sema) {
-		emitError(llvm::SMLoc(), "internal error: missing SemanticResult");
-		return mlir::failure();
+		return mlir::emitError(loc, "internal error: missing SemanticResult");
 	}
 	if (!pm.sema->target.has_value()) {
-		emitError(llvm::SMLoc(), "semantic error: missing target function meta");
-		return mlir::failure();
+		return mlir::emitError(loc, "semantic error: missing target function meta");
 	}
 
 	// -------- 1) 在 module 顶层创建 comp.problem --------
@@ -178,64 +177,367 @@ mlir::FailureOr<mlir::Value> MLIRGen::genField(comp::ProblemOp problem) {
 }
 
 mlir::LogicalResult MLIRGen::genSolve(comp::ProblemOp problem, mlir::Value field) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
+
+	auto solve = comp::SolveOp::create(builder, loc, field);
+
+	// Init region
+	{
+		mlir::Region& initRegion = solve.getInit();
+		initRegion.emplaceBlock();
+
+		mlir::OpBuilder::InsertionGuard guard(builder);
+		builder.setInsertionPointToStart(&initRegion.front());
+
+		if (mlir::failed(genApplyInit(solve, field))) {
+			return mlir::failure();
+		}
+	}
+
+	// Boundary region
+	{
+		// mlir::Region& boundaryRegion = solve.getBoundary();
+		// boundaryRegion.emplaceBlock();
+		//
+		// mlir::OpBuilder::InsertionGuard guard(builder);
+		// builder.setInsertionPointToStart(&boundaryRegion.front());
+		//
+		// if (mlir::failed(genDirichlet(solve))) {
+		// 	return mlir::failure();
+		// }
+	}
+
+	// Step region
+	{
+		// mlir::Region& stepRegion = solve.getStep();
+		// stepRegion.emplaceBlock();
+		//
+		// mlir::OpBuilder::InsertionGuard guard(builder);
+		// builder.setInsertionPointToStart(&stepRegion.front());
+		//
+		// if (mlir::failed(genForTime(solve))) {
+		// 	return mlir::failure();
+		// }
+		//
+		// if (mlir::failed(genUpdate(solve))) {
+		// 	return mlir::failure();
+		// }
+		//
+		// if (mlir::failed(genSample(solve))) {
+		// 	return mlir::failure();
+		// }
+		//
+		// if (mlir::failed(genEnforceBoundary(solve))) {
+		// 	return mlir::failure();
+		// }
+	}
 
 	return mlir::success();
 }
 
-mlir::LogicalResult MLIRGen::genApplyInit(comp::ProblemOp problem) {
+mlir::LogicalResult MLIRGen::genApplyInit(comp::SolveOp solve, mlir::Value field) {
+	const auto &symtab = pm.sema->st;
+	const auto &meta = *pm.sema->target;
 
+	// 根据 id 获取 dim 的符号引用
+	auto mkDimRef = [&](SymbolId id) -> mlir::FlatSymbolRefAttr {
+		const auto &sym = symtab.get(id);
+		return mlir::FlatSymbolRefAttr::get(&context, sym.name);
+	};
+
+	auto initEa = pm.sema->egs.init;
+	auto f64Ty = builder.getF64Type();
+	auto idxTy = builder.getIndexType();
+
+	for (const auto &ea : initEa) {
+		mlir::Location loc = mlir::UnknownLoc::get(&context);
+
+		const auto &anchor = ea.anchor;
+
+		// 构建 anchors 属性
+		llvm::SmallVector<mlir::Attribute, 4> anchors;
+		llvm::SmallDenseSet<SymbolId, 8> fixedDims; // 获取所有被固定的维度
+
+		for (size_t i = 0; i < anchor.dim.size(); ++i) {
+			comp::AnchorAttr aa = comp::AnchorAttr::get(
+				&context,
+				mkDimRef(anchor.dim[i]),
+				anchor.index[i]
+			);
+			anchors.emplace_back(aa);
+			fixedDims.insert(anchor.dim[i]);
+		}
+
+		if (!fixedDims.contains(meta.timeDim)) {
+			return mlir::emitError(loc, "In the initialization equation, timeVar must be fixed");
+		}
+
+		auto anchorsAttr = builder.getArrayAttr(anchors);
+
+		// 创建 comp.apply_init 操作
+		auto aiOp = comp::ApplyInitOp::create(builder, loc, field, anchorsAttr);
+
+		// 获取并设置 region
+		mlir::Region &aiRegion = aiOp.getRegion();
+		mlir::Block &entry = aiRegion.emplaceBlock();
+
+		llvm::SmallVector<SymbolId, 4> freeDims;
+		for (SymbolId d : meta.spaceDims) {
+			if (!fixedDims.contains(d)) freeDims.push_back(d);
+		}
+
+		// 没被固定的维度需要嵌套循环枚举
+		llvm::SmallVector<mlir::Value, 4> freeIdxArgs;
+		for (size_t k = 0; k < freeDims.size(); ++k) {
+			freeIdxArgs.push_back(entry.addArgument(idxTy, loc));
+		}
+
+		mlir::OpBuilder::InsertionGuard guard(builder);
+		builder.setInsertionPointToStart(&entry);
+
+		dimIndexEnv.clear();
+		dimCoordEnv.clear();
+
+		// 对于所有自由维度，其维度值是循环变量
+		for (size_t k = 0; k < freeDims.size(); ++k) {
+			SymbolId d = freeDims[k];
+			dimIndexEnv[d] = freeIdxArgs[k];
+			dimCoordEnv[d]= comp::CoordOp::create(builder, loc, f64Ty, mkDimRef(d), freeIdxArgs[k]);
+		}
+
+		// 对于所有被固定的维度，先获取其值,然后对应的纬度值是相应的值
+		for (size_t i = 0; i < anchor.dim.size(); ++i) {
+			SymbolId d = anchor.dim[i];
+			uint64_t ix = static_cast<double>(anchor.index[i]);
+			mlir::Value cix = mlir::arith::ConstantIndexOp::create(builder, loc, ix);
+			dimIndexEnv[d] = cix;
+			dimCoordEnv[d]  = comp::CoordOp::create(builder, loc, f64Ty, mkDimRef(d), cix);
+		}
+
+		// 生成右侧表达式
+		auto valueOr = genExpr(ea.eq->getRHS());
+		if (mlir::failed(valueOr)) {
+			return mlir::failure();
+		}
+
+		mlir::Value value = *valueOr;
+
+		// Yield 返回值
+		if (mlir::failed(emitYield(loc, value))) {
+			return mlir::failure();
+		}
+	}
+
+	return mlir::success();
 }
 
-mlir::LogicalResult MLIRGen::genDirichlet(comp::ProblemOp problem) {
+mlir::LogicalResult MLIRGen::genDirichlet(comp::SolveOp solve) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
+	return mlir::success();
 }
 
-mlir::LogicalResult MLIRGen::genForTime(comp::ProblemOp problem) {
+mlir::LogicalResult MLIRGen::genForTime(comp::SolveOp solve) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
+	return mlir::success();
 }
 
-mlir::LogicalResult MLIRGen::genUpdate(comp::ProblemOp problem) {
+mlir::LogicalResult MLIRGen::genUpdate(comp::SolveOp solve) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
+	return mlir::success();
 }
 
-mlir::LogicalResult MLIRGen::genSample(comp::ProblemOp problem) {
+mlir::LogicalResult MLIRGen::genSample(comp::SolveOp solve) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
+	return mlir::success();
 }
 
-mlir::LogicalResult MLIRGen::genEnforceBoundary(comp::ProblemOp problem) {
+mlir::LogicalResult MLIRGen::genEnforceBoundary(comp::SolveOp solve) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
+	return mlir::success();
 }
 
 mlir::LogicalResult MLIRGen::emitYield(mlir::Location loc, mlir::Value value) {
+	if (!value) {
+		return mlir::emitError(loc, "value must be non-null");
+	}
 
+	comp::YieldOp::create(builder, loc, value);
+
+	return mlir::success();
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genExpr(const ExprAST * expr) {
+	if (!expr) return mlir::failure();
 
-}
+	if (auto *e = dynamic_cast<const IntExprAST *>(expr)) return genIntExpr(e);
+	if (auto *e = dynamic_cast<const FloatExprAST *>(expr)) return genFloatExpr(e);
+	if (auto *e = dynamic_cast<const VarRefExprAST *>(expr)) return genVarRefExpr(e);
+	if (auto *e = dynamic_cast<const UnaryExprAST *>(expr)) return genUnaryExpr(e);
+	if (auto *e = dynamic_cast<const BinaryExprAST *>(expr)) return genBinaryExpr(e);
+	if (auto *e = dynamic_cast<const CallExprAST *>(expr)) return genCallExpr(e);
+	if (auto *e = dynamic_cast<const ParenExprAST *>(expr)) return genParenExpr(e);
 
-mlir::FailureOr<mlir::Value> MLIRGen::genStringExpr(const StringExprAST * expr) {
-
+	return emitError(expr->getBeginLoc(), "unsupported expression kind");
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genIntExpr(const IntExprAST * expr) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
+	const int64_t value = expr->getValue();
+	auto i64Ty = builder.getI64Type();
+	auto attr = builder.getI64IntegerAttr(value);
+	return mlir::arith::ConstantOp::create(builder, loc, i64Ty, attr).getResult();
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genFloatExpr(const FloatExprAST * expr) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
+	const double value = expr->getValue();
+	auto f64Ty = builder.getF64Type();
+	auto attr = builder.getF64FloatAttr(value);
+	return mlir::arith::ConstantOp::create(builder, loc, f64Ty, attr).getResult();
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genVarRefExpr(const VarRefExprAST * expr) {
-
+	// TODO 可能是不会用到的
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genUnaryExpr(const UnaryExprAST * expr) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
+	auto operand = genExpr(expr->getOperand());
+	if (mlir::failed(operand)) {
+		return mlir::failure();
+	}
+	mlir::Value value = *operand;
+
+	char op = expr->getOp();
+
+	if (op == '+') {
+		return value;
+	}
+
+	if (op == '-') {
+		mlir::Type ty = value.getType();
+
+		if (llvm::isa<mlir::FloatType>(ty)) {
+			return mlir::arith::NegFOp::create(builder, loc, value).getResult();
+		}
+
+		if (llvm::isa<mlir::IntegerType>(ty)) {
+			return mlir::arith::NegFOp::create(builder, loc, value).getResult();
+		}
+
+		if (ty.isIndex()) {
+			auto zero = mlir::arith::ConstantIndexOp::create(builder, loc, 0).getResult();
+			return builder.create<mlir::arith::SubIOp>(loc, zero, value).getResult();
+		}
+
+		return emitError(expr->getBeginLoc(), "only unary '+' and '-' are allowed");
+	}
+
+	return emitError(expr->getBeginLoc(), "only unary '+' and '-' are allowed");
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genBinaryExpr(const BinaryExprAST * expr) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
+	auto lhsOr = genExpr(expr->getLHS());
+	if (mlir::failed(lhsOr)) return mlir::failure();
+	auto rhsOr = genExpr(expr->getRHS());
+	if (mlir::failed(rhsOr)) return mlir::failure();
+
+	mlir::Value lhs = *lhsOr;
+	mlir::Value rhs = *rhsOr;
+	auto lhsTy = lhs.getType();
+	auto rhsTy = rhs.getType();
+
+	auto isInt = [](mlir::Type t) {
+		return llvm::isa<mlir::IntegerType>(t) || llvm::isa<mlir::IndexType>(t);
+	};
+
+	auto isFloat = [](mlir::Type t) {
+		return llvm::isa<mlir::FloatType>(t);
+	};
+
+	// 两侧存在浮点数，要将Int转换为浮点数
+	if (isFloat(lhsTy) || isFloat(rhsTy)) {
+		mlir::FloatType fTy = (isFloat(lhsTy)) ? llvm::cast<mlir::FloatType>(lhsTy) : llvm::cast<mlir::FloatType>(rhsTy);
+
+		auto toFloat = [&](mlir::Value v) -> mlir::Value {
+			mlir::Type t = v.getType();
+			if (t == fTy) return v;
+
+			if (auto ft = llvm::dyn_cast<mlir::FloatType>(t)) {
+				if (ft.getWidth() < fTy.getWidth()) {
+					return mlir::arith::ExtFOp::create(builder, loc, fTy, v);
+				}
+				return mlir::arith::TruncFOp::create(builder, loc, fTy, v);
+			}
+
+			if (llvm::isa<mlir::IndexType>(t)) {
+				// index -> i64 -> float
+				auto i64 = builder.getI64Type();
+				auto acOp = mlir::arith::IndexCastOp::create(builder, loc, i64, v);
+				return mlir::arith::SIToFPOp::create(builder, loc, fTy, acOp);
+			}
+
+			if (auto it = llvm::dyn_cast<mlir::IntegerType>(t)) {
+				return mlir::arith::SIToFPOp::create(builder, loc, fTy, v);
+			}
+
+			return mlir::Value();
+		};
+
+		lhs = toFloat(lhs);
+		rhs = toFloat(rhs);
+		if (!lhs || !rhs) {
+			return mlir::emitError(loc, "lhs and rhs must be non-null");
+		}
+
+		switch (expr->getOp()) {
+		case '+':return mlir::arith::AddFOp::create(builder, loc, lhs, rhs).getResult();
+		case '-':return mlir::arith::SubFOp::create(builder, loc, lhs, rhs).getResult();
+		case '*':return mlir::arith::MulFOp::create(builder, loc, lhs, rhs).getResult();
+		case '/':return mlir::arith::DivFOp::create(builder, loc, lhs, rhs).getResult();
+		default:
+			return emitError(expr->getBeginLoc(), std::string(1,expr->getOp()) + " is unexpected");
+		}
+	}
+
+	// 此时两边应为整型，否则不是数值类型
+	if (!isInt(lhsTy) || !isInt(rhsTy)) {
+		return emitError(expr->getBeginLoc(), "binary op: operands must be numeric");
+	}
+
+	// 到此两端都为整型
+	if (lhsTy != rhsTy) {
+		if (llvm::isa<mlir::IndexType>(lhsTy) && llvm::isa<mlir::IntegerType>(rhsTy)) {
+			rhs = mlir::arith::IndexCastOp::create(builder, loc, lhsTy, rhs);
+			rhsTy = rhs.getType();
+		} else if (llvm::isa<mlir::IndexType>(rhsTy) && llvm::isa<mlir::IntegerType>(lhsTy)) {
+			lhs = mlir::arith::IndexCastOp::create(builder, loc, rhsTy, lhs);
+			lhsTy = lhs.getType();
+		} else {
+			// 暂时认为整型只有i64一种，不存在其它int类型
+			return emitError(expr->getBeginLoc(), "binary op: mismatched integer types");
+		}
+	}
+
+	switch (expr->getOp()) {
+	case '+':return mlir::arith::AddIOp::create(builder, loc, lhs, rhs).getResult();
+	case '-':return mlir::arith::SubIOp::create(builder, loc, lhs, rhs).getResult();
+	case '*':return mlir::arith::MulIOp::create(builder, loc, lhs, rhs).getResult();
+	case '/':return mlir::arith::DivSIOp::create(builder, loc, lhs, rhs).getResult();
+	case '%':return mlir::arith::RemSIOp::create(builder, loc, lhs, rhs).getResult();
+	default:
+		return emitError(expr->getBeginLoc(), std::string(1,expr->getOp()) + " is unexpected");
+	}
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genCallExpr(const CallExprAST * expr) {
@@ -243,15 +545,11 @@ mlir::FailureOr<mlir::Value> MLIRGen::genCallExpr(const CallExprAST * expr) {
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genParenExpr(const ParenExprAST * expr) {
-
+	return genExpr(expr->getSub());
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genPoints(
 	mlir::Location loc, mlir::Value value, int64_t index) {
-
-}
-mlir::FailureOr<mlir::Value> MLIRGen::genDelta(
-	mlir::Location loc, mlir::Value value, int64_t size, int64_t index) {
 
 }
 
