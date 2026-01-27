@@ -63,13 +63,11 @@ body 内必须包含：`comp.dim`（至少一个维度）、`comp.field`（至�
 
 读取某个维度的网格点数（`points`）。通常用于构造循环上界。
 
-### 3.5 `comp.delta`
+### 3.5 `comp.coord`
 
-`%dx = comp.delta @x : f64`
+`%x = comp.coord @x %ix : f64`
 
-读取某个维度的步长（Δ），派生自 `domain`：`Δ = (upper - lower) / (points - 1)`
-
-仅适用于均匀网格维度。
+把离散网格索引转换为该维度上的连续坐标值（uniform grid）。
 
 ### 3.6 `comp.solve`
 
@@ -183,20 +181,28 @@ comp.problem attributes {
   // 3) 求解流程：init / boundary / step
   comp.solve %u {
 
-    // 表示 t=0 这一层的初始化（示例 RHS 为 0）
+    // u(x,0)=x
     comp.apply_init %u anchors=[#comp.anchor<dim=@t, index=0>] {
-      comp.yield 0.0 : f64
+    ^bb0(%ix: index):
+      %x = comp.coord @x %ix : f64
+      comp.yield %x : f64
     }
 
   } boundary {
   
-    // u(0,t) = 10
+    // u(0,t)=10+sin(t)
     %b0 = comp.dirichlet %u anchors=[#comp.anchor<dim=@x, index=0>] {
-      comp.yield 10.0 : f64
+    ^bb0(%n: index):
+      %t = comp.coord @t %n : f64
+      %s = math.sin %t : f64
+      %c10 = arith.constant 10.0 : f64
+      %rhs = arith.addf %c10, %s : f64
+      comp.yield %rhs : f64
     } : !comp.boundary
 
-    // u(100,t) = 10
+    // u(100,t)=10
     %b1 = comp.dirichlet %u anchors=[#comp.anchor<dim=@x, index=100>] {
+    ^bb0(%n: index):
       comp.yield 10.0 : f64
     } : !comp.boundary
 
@@ -221,8 +227,8 @@ comp.problem attributes {
           %r = comp.sample %u (@x=%ix, @t=%n) shift<@x=+1, @t=0> : f64
 
           // 网格步长（可常量折叠）
-          %dx  = comp.delta @x : f64
-          %dt  = comp.delta @t : f64
+          %dx  = arith.constant 1.0 : f64
+          %dt  = arith.constant 1.0 : f64
           %dx2 = arith.mulf %dx, %dx : f64
 
           // lap = (l + r - 2c) / dx^2

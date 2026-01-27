@@ -107,15 +107,21 @@ def PointsOp : Comp_Op<"points", [Pure]> {
     let assemblyFormat = "$dim attr-dict `:` type($result)";
 }
 
-// %dx = comp.delta @x : f64
+def CoordOp : Comp_Op<"coord"> {
+    let summary = "Get coordinate value of a dimension at an index (uniform grid).";
 
-def DeltaOp : Comp_Op<"delta", [Pure]> {
-    let summary = "Read grid spacing (delta) for a uniform-grid dimension.";
+    let arguments = (ins
+        FlatSymbolRefAttr:$dim,   // @x / @t
+        Index:$iv                 // %ix / %n
+    );
 
-    let arguments = (ins FlatSymbolRefAttr:$dim);
-    let results = (outs AnyFloat:$result);
+    let results = (outs F64:$coord);
 
-    let assemblyFormat = "$dim attr-dict `:` type($result)";
+    // 示例打印： %x = comp.coord @x %ix : f64
+    let assemblyFormat = "$dim $iv attr-dict `:` type($coord)";
+
+    // points >= 2, upper > lower（如果这些已由 comp.dim verifier 保证，可不重复）
+    let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

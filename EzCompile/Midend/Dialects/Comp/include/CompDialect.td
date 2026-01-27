@@ -64,7 +64,7 @@ def Comp_AnchorAttr : AttrDef<Comp_Dialect, "Anchor"> {
     // 过渡方案：dim 用 FlatSymbolRefAttr，能打印成 @x / @t 这样的符号引用。
     let parameters = (ins
         "mlir::FlatSymbolRefAttr":$dim,
-        "int64_t":$index
+        "uint64_t":$index
     );
 
     let assemblyFormat =
