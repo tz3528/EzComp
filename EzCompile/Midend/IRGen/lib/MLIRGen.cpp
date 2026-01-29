@@ -427,7 +427,9 @@ mlir::FailureOr<mlir::Value> MLIRGen::genUnaryExpr(const UnaryExprAST * expr) {
 		}
 
 		if (llvm::isa<mlir::IntegerType>(ty)) {
-			return mlir::arith::NegFOp::create(builder, loc, value).getResult();
+			auto zero = mlir::arith::ConstantOp::create(builder, loc, ty,
+				builder.getIntegerAttr(ty, 0)).getResult();
+			return builder.create<mlir::arith::SubIOp>(loc, zero, value).getResult();
 		}
 
 		if (ty.isIndex()) {
