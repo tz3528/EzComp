@@ -60,11 +60,11 @@ private:
 	//===--------------------------------------------------------------------===//
 	mlir::FailureOr<comp::ProblemOp> genProblem();
 
-	mlir::LogicalResult genDim(comp::ProblemOp problem);
-	mlir::FailureOr<mlir::Value> genField(comp::ProblemOp problem);
-	mlir::LogicalResult genSolve(comp::ProblemOp problem, mlir::Value field);
-	mlir::LogicalResult genApplyInit(comp::SolveOp solve, mlir::Value field);
-	mlir::LogicalResult genDirichlet(comp::SolveOp solve);
+	mlir::LogicalResult genDim();
+	mlir::FailureOr<mlir::Value> genField();
+	mlir::LogicalResult genSolve(mlir::Value field);
+	mlir::LogicalResult genApplyInit(mlir::Value field);
+	mlir::LogicalResult genDirichlet(mlir::Value field);
 	mlir::LogicalResult genForTime(comp::SolveOp solve);
 	mlir::LogicalResult genUpdate(comp::SolveOp solve);
 	mlir::LogicalResult genSample(comp::SolveOp solve);
@@ -88,9 +88,7 @@ private:
 	mlir::FailureOr<mlir::Value> genParenExpr(const ParenExprAST * expr);
 
 	// points/delta 更适合作为表达式层 helper（用到才生成）
-	mlir::FailureOr<mlir::Value> genPoints(mlir::Location loc,
-										  mlir::Value value,
-										  int64_t index);
+	mlir::FailureOr<mlir::Value> genPoints(mlir::Location loc, SymbolId dimId);
 
 	/// 报错接口
 	mlir::LogicalResult emitError(llvm::SMLoc loc, llvm::StringRef msg) {
@@ -108,6 +106,13 @@ private:
 
 		pm.sourceMgr.PrintMessage(loc, llvm::SourceMgr::DK_Error, msg);
 		return mlir::failure();
+	}
+
+	// 根据 id 获取 dim 的符号引用
+	mlir::FlatSymbolRefAttr mkDimRef(SymbolId id) {
+		static const auto &symtab = pm.sema->st;
+		const auto &sym = symtab.get(id);
+		return mlir::FlatSymbolRefAttr::get(&context, sym.name);
 	}
 
 	const ParsedModule &pm;
