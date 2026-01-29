@@ -73,9 +73,6 @@ mlir::FailureOr<comp::ProblemOp> MLIRGen::genProblem() {
 	if (!pm.sema) {
 		return mlir::emitError(loc, "internal error: missing SemanticResult");
 	}
-	if (!pm.sema->target.has_value()) {
-		return mlir::emitError(loc, "semantic error: missing target function meta");
-	}
 
 	// -------- 1) 在 module 顶层创建 comp.problem --------
 	auto problem = comp::ProblemOp::create(builder, loc);
@@ -146,7 +143,7 @@ mlir::LogicalResult MLIRGen::genDim(comp::ProblemOp problem) {
 mlir::FailureOr<mlir::Value> MLIRGen::genField(comp::ProblemOp problem) {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
-	auto target = *pm.sema->target;
+	const auto &target = pm.sema->target;
 	std::string fieldName = target.func;
 
 	const auto &symtab = pm.sema->st;
@@ -237,7 +234,7 @@ mlir::LogicalResult MLIRGen::genSolve(comp::ProblemOp problem, mlir::Value field
 
 mlir::LogicalResult MLIRGen::genApplyInit(comp::SolveOp solve, mlir::Value field) {
 	const auto &symtab = pm.sema->st;
-	const auto &meta = *pm.sema->target;
+	const auto &meta = pm.sema->target;
 
 	// 根据 id 获取 dim 的符号引用
 	auto mkDimRef = [&](SymbolId id) -> mlir::FlatSymbolRefAttr {
