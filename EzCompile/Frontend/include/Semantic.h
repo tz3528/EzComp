@@ -53,14 +53,33 @@ struct SymbolTable {
 	const Symbol& get(SymbolId id) const { return symbols[id]; }
 };
 
+/**
+ * 用于记录下来某个方程中所有被固定的维度
+ */
 struct Anchor {
-	std::vector<SymbolId> dim;                 // 被固定的维度
+	std::vector<SymbolId> dim;       // 被固定的维度
 	std::vector<uint64_t> index;     // 若能落到均匀网格索引：0 或 N-1（或 t 的 0）
 };
 
 struct EquationAnchor {
 	const EquationAST* eq;
 	Anchor anchor;
+};
+
+/**
+ * 用于记录函数里面某个维度的偏移量。
+ */
+struct ShiftInfo {
+	SymbolId dim;
+	int64_t offset;
+
+	bool operator==(const ShiftInfo& other) const {return dim == other.dim && offset == other.offset;}
+	bool operator<(const ShiftInfo& other) const {return dim != other.dim ? dim < other.dim : offset < other.offset;}
+};
+
+struct EquationShiftInfo {
+	const EquationAST* eq;
+	std::vector<ShiftInfo> shift_infos;
 };
 
 // ------------------------------------------------------
@@ -74,7 +93,7 @@ struct EquationGroups {
 	std::vector<EquationAnchor> boundary;
 
 	// 每次迭代的普通方程：如 PDE 主方程/离散模板等
-	std::vector<const EquationAST*> iter;
+	std::vector<EquationShiftInfo> iter;
 };
 
 // ------------------------------------------------------
@@ -102,6 +121,9 @@ struct SemanticResult {
 
 	// Optional：目标函数与维度角色
 	std::optional<TargetFunctionMeta> target;
+
+	// 模板信息
+	std::vector<ShiftInfo> stencil_info;
 };
 
 /// 用于存储解析结果和语法分析中的内容
@@ -127,6 +149,8 @@ private:
 	void checkEquations(const ModuleAST& module, SymbolTable& st, OptionsTable& opts, EquationGroups &eg);
 	void checkFunctionType(const EquationAST * equation,const CallExprAST * call, SymbolTable& st, OptionsTable& opts, EquationGroups &eg);
 	void checkFunction(ExprAST* expr, SymbolTable& st, OptionsTable& opts);
+	void checkStencilInfo(SymbolTable& st, EquationGroups &eg, TargetFunctionMeta &target, std::vector<ShiftInfo> &stencil_info);
+	void checkShiftInfo(SymbolTable& st, TargetFunctionMeta &target, ExprAST* expr, std::vector<ShiftInfo> &shift_info);
 
 	static bool getInteger(ExprAST* expr, int64_t &result);
 	static bool getFloat(ExprAST* expr, double &result);

@@ -17,14 +17,14 @@ namespace ezcompile {
 std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 	SymbolTable st;
 	OptionsTable opt;
+	EquationGroups eg;
+	std::vector<ShiftInfo> stencil_info;
 
 	auto result = OptionsTable::createWithDefaults();
 	if (!result) {
 		return nullptr;
 	}
 	opt = *result;
-
-	EquationGroups eg;
 
 	collectDecls(module, st);
 	checkOptions(module, st, opt);
@@ -44,7 +44,9 @@ std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 	}
 	tfm.func = opt.targetFunc.name;
 
-	return std::make_unique<SemanticResult>(opt, st, eg,tfm);
+	checkStencilInfo(st, eg, tfm, stencil_info);
+
+	return std::make_unique<SemanticResult>(opt, st, eg,tfm, stencil_info);
 }
 
 SymbolTable Semantic::collectDecls(const ModuleAST& module, SymbolTable& st) {
@@ -239,7 +241,7 @@ void Semantic::checkFunctionType(
 	}
 
 	if (isIteration && !isBoundary && !isInit) {
-		eg.iter.emplace_back(equation);
+		eg.iter.emplace_back(EquationShiftInfo{equation, {}});
 	}
 	else if (!isIteration && isBoundary && !isInit) {
 		if (anchor.dim.empty()) {
@@ -354,6 +356,71 @@ void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts)
 		count++;
 		begin = end + 1;
 		end = begin;
+	}
+}
+
+void Semantic::checkStencilInfo(SymbolTable& st, EquationGroups &eg, TargetFunctionMeta &target, std::vector<ShiftInfo> &stencil_info) {
+	std::set<ShiftInfo> stencil;
+	for (auto &es : eg.iter) {
+		std::vector<ShiftInfo> shift_info;
+		auto lhs = es.eq->getLHS();
+		auto rhs = es.eq->getRHS();
+		// TODO 这里智能指针的使用很混乱，考虑全部用罗指针
+		checkShiftInfo(st, target, const_cast<ExprAST*>(lhs), shift_info);
+		checkShiftInfo(st, target, const_cast<ExprAST*>(rhs), shift_info);
+
+		// 存储该方程的所有偏移信息
+		for (auto &info : shift_info) {
+			stencil.insert(info);
+		}
+	}
+
+	// 去重后的偏移信息共同组成了方程组的模板信息
+	for (auto &info : stencil) {
+		stencil_info.emplace_back(info);
+	}
+}
+
+void Semantic::checkShiftInfo(SymbolTable& st, TargetFunctionMeta &target, ExprAST* expr, std::vector<ShiftInfo> &shift_info) {
+	if (auto call = llvm::dyn_cast<CallExprAST>(expr)) {
+		auto func = call->getCallee();
+		if (func != target.func) return ;
+
+		auto &args = call->getArgs();
+		for (size_t i = 0; i < args.size(); i++) {
+			if (i == target.timeDim) continue;
+
+			// 这里除了时间变量外，其余变量均要枚举
+			if (auto bop = llvm::dyn_cast<BinaryExprAST>(args[i])) {
+				auto op = bop->getOp();
+				auto lhs = bop->getLHS();
+				auto rhs = bop->getRHS();
+				if (auto var = llvm::dyn_cast<VarRefExprAST>(lhs)) {
+					if (auto num = llvm::dyn_cast<IntExprAST>(rhs)) {
+						if (op == '+' || op == '-') {
+							// 变量 +或- 常量，说明符合偏移模式
+							auto value = num->getValue();
+							auto name = var->getName().str();
+							auto id = st.lookup(name)->id;
+							shift_info.emplace_back(id, value);
+						}
+					}
+				}
+			}
+		}
+	}
+	else if (auto bop = llvm::dyn_cast<BinaryExprAST>(expr)) {
+		auto lhs = bop->getLHS();
+		auto rhs = bop->getRHS();
+		// 枚举左右子树
+		checkShiftInfo(st, target, lhs, shift_info);
+		checkShiftInfo(st, target, rhs, shift_info);
+	}
+	else if (auto paren = llvm::dyn_cast<ParenExprAST>(expr)) {
+		checkShiftInfo(st, target, paren->getSub(), shift_info);
+	}
+	else if (auto uexpr = llvm::dyn_cast<UnaryExprAST>(expr)) {
+		checkShiftInfo(st, target, uexpr->getOperand(), shift_info);
 	}
 }
 
