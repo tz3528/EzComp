@@ -118,7 +118,7 @@ private:
 class FloatExprAST final
     : public ExprBase<FloatExprAST, ExprAST::Kind::Float> {
 public:
-    FloatExprAST(int64_t value, SourceRange r)
+    FloatExprAST(double value, SourceRange r)
         : ExprBase(r), value(value) {}
 
     double getValue() const { return value; }
@@ -295,7 +295,7 @@ private:
     llvm::StringRef name;
     std::unique_ptr<ExprAST> minV;
     std::unique_ptr<ExprAST> maxV;
-    long long num;
+    size_t num;
 };
 
 class EquationAST final
