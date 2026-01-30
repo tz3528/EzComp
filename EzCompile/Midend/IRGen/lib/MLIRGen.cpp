@@ -15,6 +15,8 @@
 
 #include "IRGen/include/MLIRGen.h"
 
+#include <thread>
+
 namespace ezcompile {
 
 MLIRGen::MLIRGen(const ParsedModule &pm, mlir::MLIRContext &context)
@@ -198,38 +200,47 @@ mlir::LogicalResult MLIRGen::genSolve(mlir::Value field) {
 
 	// Step region
 	{
-		// mlir::Region& stepRegion = solve.getStep();
-		// stepRegion.emplaceBlock();
-		//
-		// mlir::OpBuilder::InsertionGuard guard(builder);
-		// builder.setInsertionPointToStart(&stepRegion.front());
-		//
-		// if (mlir::failed(genPoints(loc, pm.sema->target->timeDim))) {
-		// 	return mlir::failure();
-		// }
+		llvm::SmallVector<mlir::Type> argTypes;
+		llvm::SmallVector<mlir::Location> argLocs;
 
-		// if (mlir::failed(genForTime(solve))) {
-		// 	return mlir::failure();
-		// }
+		for (mlir::Value h : boundaryHandles) {
+			argTypes.push_back(h.getType());
+			argLocs.push_back(loc);
+		}
 
-		// if (mlir::failed(genUpdate(solve))) {
-		// 	return mlir::failure();
-		// }
-		//
-		// if (mlir::failed(genSample(solve))) {
-		// 	return mlir::failure();
-		// }
-		//
-		// if (mlir::failed(genEnforceBoundary(solve))) {
-		// 	return mlir::failure();
-		// }
+		mlir::Region &stepRegion = solve.getStep();
+
+		mlir::OpBuilder::InsertionGuard guard(builder);
+		mlir::Block *stepBlock = builder.createBlock(&stepRegion, stepRegion.end(),
+													argTypes, argLocs);
+
+		// 这里要把boundaryt中的句柄替换成step的属性
+		boundaryHandles.clear();
+		boundaryHandles.append(stepBlock->args_begin(), stepBlock->args_end());
+
+		builder.setInsertionPointToStart(stepBlock);
+
+		auto timePoints = genPoints(loc, pm.sema->target.timeDim);
+		if (mlir::failed(timePoints)) {
+			return mlir::failure();
+		}
+
+		mlir::Value c0 = mlir::arith::ConstantIndexOp::create(builder, loc, 0);
+
+		if (mlir::failed(genEnforceBoundary(field, c0))) {
+			return mlir::failure();
+		}
+
+		if (mlir::failed(genForTime(field, *timePoints))) {
+			return mlir::failure();
+		}
 	}
 
 	return mlir::success();
 }
 
 mlir::LogicalResult MLIRGen::genApplyInit(mlir::Value field) {
-	const auto &meta = *pm.sema->target;
+	const auto &meta = pm.sema->target;
 
 	auto initEa = pm.sema->egs.init;
 	auto f64Ty = builder.getF64Type();
@@ -310,14 +321,14 @@ mlir::LogicalResult MLIRGen::genApplyInit(mlir::Value field) {
 }
 
 mlir::LogicalResult MLIRGen::genDirichlet(mlir::Value field) {
-	const auto &meta   = *pm.sema->target;
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
+	const auto &meta   = pm.sema->target;
 
 	auto boundaryEa = pm.sema->egs.boundary;
 	auto f64Ty = builder.getF64Type();
 	auto idxTy = builder.getIndexType();
 
 	for (const auto &ea : boundaryEa) {
-		mlir::Location loc = mlir::UnknownLoc::get(&context);
 		const auto &anchor = ea.anchor;
 
 		llvm::SmallVector<mlir::Attribute, 4> anchors;
@@ -389,31 +400,79 @@ mlir::LogicalResult MLIRGen::genDirichlet(mlir::Value field) {
 		auto valueOr = genExpr(ea.eq->getRHS());
 		if (mlir::failed(valueOr)) return mlir::failure();
 		if (mlir::failed(emitYield(loc, *valueOr))) return mlir::failure();
+
+		boundaryHandles.emplace_back(dOp);
+	}
+
+	comp::YieldOp::create(builder, loc, boundaryHandles);
+
+	return mlir::success();
+}
+
+mlir::LogicalResult MLIRGen::genForTime(mlir::Value field, mlir::Value timePoints) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
+
+	mlir::Value c0 = mlir::arith::ConstantIndexOp::create(builder, loc, 0);
+	mlir::Value c1 = mlir::arith::ConstantIndexOp::create(builder, loc, 1);
+
+	mlir::Value ub = mlir::arith::SubIOp::create(builder, loc, timePoints, c1);
+
+	auto forOp = comp::ForTimeOp::create(builder, loc, c0, ub, c1);
+
+	mlir::Region &r = forOp.getBody();
+	auto *body = new mlir::Block();
+	r.push_back(body);
+	body->addArgument(builder.getIndexType(), loc);
+	auto tctx = TimeLoopCtx::makeTimeLoopCtx(forOp);
+
+	{
+		mlir::OpBuilder::InsertionGuard guard(builder);
+		builder.setInsertionPointToStart(body);
+
+		tctx.writeTime = mlir::arith::AddIOp::create(builder, loc, tctx.atTime, c1);
+
+		// if (mlir::failed(genUpdate(field, tctx))) {
+		// 	return mlir::failure();
+		// }
+
+		if (mlir::failed(genEnforceBoundary(field, tctx.writeTime))) {
+			return mlir::failure();
+		}
 	}
 
 	return mlir::success();
 }
 
-mlir::LogicalResult MLIRGen::genForTime(comp::SolveOp solve) {
+mlir::LogicalResult MLIRGen::genUpdate(mlir::Value field, TimeLoopCtx tctx) {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
 	return mlir::success();
 }
 
-mlir::LogicalResult MLIRGen::genUpdate(comp::SolveOp solve) {
+mlir::LogicalResult MLIRGen::genSample(mlir::Value field) {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
 	return mlir::success();
 }
 
-mlir::LogicalResult MLIRGen::genSample(comp::SolveOp solve) {
+mlir::LogicalResult MLIRGen::genEnforceBoundary(mlir::Value field, mlir::Value atTime) {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
-	return mlir::success();
-}
+	if (boundaryHandles.empty()) {
+		return mlir::success();
+	}
 
-mlir::LogicalResult MLIRGen::genEnforceBoundary(comp::SolveOp solve) {
-	mlir::Location loc = mlir::UnknownLoc::get(&context);
+	if (!atTime || !atTime.getType().isIndex()) {
+		return mlir::emitError(loc, "comp.enforce_boundary: atTime must be index");
+	}
+
+	for (mlir::Value b : boundaryHandles) {
+		if (!mlir::isa<comp::BoundaryType>(b.getType())) {
+			return mlir::emitError(loc, "comp.enforce_boundary: each boundary must be !comp.boundary");
+		}
+	}
+
+	comp::EnforceBoundaryOp::create(builder, loc, field, boundaryHandles, atTime);
 
 	return mlir::success();
 }

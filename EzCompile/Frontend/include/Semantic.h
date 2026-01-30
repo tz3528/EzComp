@@ -120,7 +120,7 @@ struct SemanticResult {
 	EquationGroups egs;
 
 	// Optional：目标函数与维度角色
-	std::optional<TargetFunctionMeta> target;
+	TargetFunctionMeta target;
 
 	// 模板信息
 	std::vector<ShiftInfo> stencil_info;

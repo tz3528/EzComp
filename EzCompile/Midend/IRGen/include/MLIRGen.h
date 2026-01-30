@@ -39,6 +39,9 @@ class ModuleOp;
 namespace ezcompile {
 
 class MLIRGen {
+
+	struct TimeLoopCtx;
+
 public:
 	MLIRGen(const ParsedModule &pm, mlir::MLIRContext &context);
 
@@ -65,10 +68,10 @@ private:
 	mlir::LogicalResult genSolve(mlir::Value field);
 	mlir::LogicalResult genApplyInit(mlir::Value field);
 	mlir::LogicalResult genDirichlet(mlir::Value field);
-	mlir::LogicalResult genForTime(comp::SolveOp solve);
-	mlir::LogicalResult genUpdate(comp::SolveOp solve);
-	mlir::LogicalResult genSample(comp::SolveOp solve);
-	mlir::LogicalResult genEnforceBoundary(comp::SolveOp solve);
+	mlir::LogicalResult genForTime(mlir::Value field, mlir::Value timePoints);
+	mlir::LogicalResult genUpdate(mlir::Value field, TimeLoopCtx tctx);
+	mlir::LogicalResult genSample(mlir::Value field);
+	mlir::LogicalResult genEnforceBoundary(mlir::Value field, mlir::Value atTime);
 
 	//===--------------------------------------------------------------------===//
 	// Region helper：终结符
@@ -122,6 +125,20 @@ private:
 
 	llvm::DenseMap<SymbolId, mlir::Value> dimIndexEnv; // dim -> index value
 	llvm::DenseMap<SymbolId, mlir::Value> dimCoordEnv; // dim -> f64 coord value
+
+	llvm::SmallVector<mlir::Value, 4> boundaryHandles;
+
+	struct TimeLoopCtx {
+		comp::ForTimeOp loop;			// 循环操作符
+		mlir::Value atTime, writeTime;	// 当前时刻和即将被写的时刻
+		mlir::Value lb, ub, step;		// 寻话初值、循环上界和步长
+
+		static TimeLoopCtx makeTimeLoopCtx(comp::ForTimeOp loop) {
+			mlir::Block &entry = loop.getBody().front();
+			mlir::Value atTime = entry.getArgument(0);
+			return {loop, atTime, mlir::Value(), loop.getLb(), loop.getUb(), loop.getStep()};
+		}
+	};
 };
 
 }
