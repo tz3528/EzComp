@@ -198,13 +198,13 @@ comp.problem attributes {
       %c10 = arith.constant 10.0 : f64
       %rhs = arith.addf %c10, %s : f64
       comp.yield %rhs : f64
-    } : !comp.boundary
+    } : (!comp.field<f64>) -> !comp.boundary
 
     // u(100,t)=10
     %b1 = comp.dirichlet %u anchors=[#comp.anchor<dim=@x, index=100>] {
     ^bb0(%n: index):
       comp.yield 10.0 : f64
-    } : !comp.boundary
+    } : (!comp.field<f64>) -> !comp.boundary
 
   } step {
 
