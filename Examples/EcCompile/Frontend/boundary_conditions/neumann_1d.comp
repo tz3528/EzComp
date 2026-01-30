@@ -1,0 +1,37 @@
+// 1D热传导方程 - Neumann边界条件示例
+// 方程: ∂u/∂t = k * ∂²u/∂x²
+// 描述: 模拟绝缘棒的热传导，一端固定温度，另一端绝热（导数为0）
+
+declarations {
+    x[0,100,101];
+    t[0,100,101];
+}
+
+equations {
+    // 热传导方程
+    diff(u(x,t),t,1)=50.0*diff(u(x,t),x,2);
+
+    // 二阶空间导数的有限差分近似
+    diff(u(x,t),x,2)=(u(x-1,t)+u(x+1,t)-2*u(x,t))/delta(x,2);
+
+    // 从时间导数更新到下一时间步
+    u(x,t+1)=u(x,t)+diff(u(x,t),t,1)*delta(t,1);
+
+    // 初始条件: 整个棒温度为0
+    u(x,0)=0;
+
+    // 左边界: Dirichlet边界条件，固定温度为100
+    u(0,t)=100;
+
+    // 右边界: Neumann边界条件，绝热（导数为0）
+    // 通过在边界处使用虚拟点实现: du/dx(x=100) = 0
+    // 这意味着 u(101,t) = u(99,t)，因此边界点的更新方式不同
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,t)";
+    timeVar:"t";
+}

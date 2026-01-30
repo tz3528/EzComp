@@ -155,14 +155,14 @@ void Semantic::checkFunctionType(
 			if (auto timeVar = llvm::dyn_cast<VarRefExprAST>(var)) {
 				if (timeVar->getName() != time) {
 					emitError(var->getBeginLoc(),
-						"The th " + std::to_string(i) + " parameter must be a timeVar");
+						"The " + std::to_string(i) + "th parameter must be a timeVar");
 					return ;
 				}
 			}
 			else if (auto timeAddVar = llvm::dyn_cast<BinaryExprAST>(var)) {
 				if (timeAddVar->toString() != time + "+1") {
 					emitError(var->getBeginLoc(),
-						"The th " + std::to_string(i) + " parameter must be a timeVar");
+						"The " + std::to_string(i) + "th parameter must be a timeVar");
 					return ;
 				}
 				//t+1是迭代方程
@@ -182,7 +182,7 @@ void Semantic::checkFunctionType(
 			else {
 				//可能是浮点数
 				emitError(var->getBeginLoc(),
-							"The th " + std::to_string(i) + " parameter must be a timeVar");
+							"The " + std::to_string(i) + "th parameter must be a timeVar");
 				return ;
 			}
 		}
@@ -191,7 +191,7 @@ void Semantic::checkFunctionType(
 			if (auto anotherVar = llvm::dyn_cast<VarRefExprAST>(var)) {
 				if (anotherVar->getName() != opts.targetFunc.args[i]) {
 					emitError(var->getBeginLoc(),
-						"The th " + std::to_string(i) + " parameter no match");
+						"The " + std::to_string(i) + "th parameter does not match");
 					return ;
 				}
 			}
@@ -218,7 +218,7 @@ void Semantic::checkFunctionType(
 				if (auto selfVar = llvm::dyn_cast<VarRefExprAST>(lhs)) {
 					if (selfVar->getName() != opts.targetFunc.args[i]) {
 						emitError(lhs->getBeginLoc(),
-							"The th " + std::to_string(i) + " parameter no match");
+							"The " + std::to_string(i) + "th parameter does not match");
 						return ;
 					}
 					if (!llvm::isa<IntExprAST>(rhs)) {

@@ -190,11 +190,11 @@ std::unique_ptr<VarDeclAST> Parser::parseVarDeclItem() {
     Token semiTok = curTok;
     if (!consume(Token::semicolon, "expected ';' after declaration")) return nullptr;
 
-    // num 的整数校验（可选，但很推荐）
+    // num 的整数校验（必须通过才能继续）
     long long num = 0;
     if (!llvm::to_integer(numTok.getSpelling(), num) || num <= 0) {
         emitError(numTok.getLoc(), "num must be a positive integer");
-        // 继续构造也行，或者 return nullptr
+        return nullptr;
     }
 
     return std::make_unique<VarDeclAST>(

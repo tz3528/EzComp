@@ -100,8 +100,8 @@ struct SemanticResult {
 	// 3/4/5) 初始化/边界/迭代方程指针列表（Core）
 	EquationGroups egs;
 
-	// Optional：目标函数与维度角色
-	std::optional<TargetFunctionMeta> target;
+	// 目标函数与维度角色（总是存在）
+	TargetFunctionMeta target;
 };
 
 /// 用于存储解析结果和语法分析中的内容

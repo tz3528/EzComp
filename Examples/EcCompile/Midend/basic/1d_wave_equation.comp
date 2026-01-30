@@ -1,0 +1,38 @@
+// 1D波动方程 - 基础示例
+// 方程: ∂²u/∂t² = c² * ∂²u/∂x²
+// 描述: 模拟一维弦的振动
+
+declarations {
+    x[0,100,101];
+    t[0,200,201];
+}
+
+equations {
+    // 波动方程（c²=4.0，波速c=2.0）
+    diff(u(x,t),t,2)=4.0*diff(u(x,t),x,2);
+
+    // 二阶时间导数
+    diff(u(x,t),t,2)=(u(x,t+1)-2*u(x,t)+u(x,t-1))/delta(t,2);
+
+    // 二阶空间导数
+    diff(u(x,t),x,2)=(u(x-1,t)+u(x+1,t)-2*u(x,t))/delta(x,2);
+
+    // 时间步更新
+    u(x,t+1)=2*u(x,t)-u(x,t-1)+diff(u(x,t),t,2)*delta(t,2);
+
+    // 初始条件: 弦初始静止
+    u(x,0)=0;
+    u(x,1)=u(x,0);
+
+    // 边界条件: 两端固定
+    u(0,t)=0;
+    u(100,t)=0;
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,t)";
+    timeVar:"t";
+}
