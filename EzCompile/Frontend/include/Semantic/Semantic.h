@@ -31,7 +31,7 @@ using SymbolId = uint64_t;
 struct Domain {
 	int64_t lower = 0.0; // 下界
 	int64_t upper = 0.0; // 上界
-	uint64_t points = 0;  // 点数 N
+	uint64_t points = 0; // 点数 N
 };
 
 struct Symbol {
@@ -57,8 +57,8 @@ struct SymbolTable {
  * 用于记录下来某个方程中所有被固定的维度
  */
 struct Anchor {
-	std::vector<SymbolId> dim;       // 被固定的维度
-	std::vector<uint64_t> index;     // 若能落到均匀网格索引：0 或 N-1（或 t 的 0）
+	std::vector<SymbolId> dim;   // 被固定的维度
+	std::vector<uint64_t> index; // 若能落到均匀网格索引：0 或 N-1（或 t 的 0）
 };
 
 struct EquationAnchor {
@@ -73,8 +73,8 @@ struct ShiftInfo {
 	SymbolId dim;
 	int64_t offset;
 
-	bool operator==(const ShiftInfo& other) const {return dim == other.dim && offset == other.offset;}
-	bool operator<(const ShiftInfo& other) const {return dim != other.dim ? dim < other.dim : offset < other.offset;}
+	bool operator==(const ShiftInfo& other) const { return dim == other.dim && offset == other.offset; }
+	bool operator<(const ShiftInfo& other) const { return dim != other.dim ? dim < other.dim : offset < other.offset; }
 };
 
 struct EquationShiftInfo {
@@ -146,16 +146,19 @@ public:
 private:
 	SymbolTable collectDecls(const ModuleAST& module, SymbolTable& st);
 	void checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTable& opts);
-	void checkEquations(const ModuleAST& module, SymbolTable& st, OptionsTable& opts, EquationGroups &eg);
-	void checkFunctionType(const EquationAST * equation,const CallExprAST * call, SymbolTable& st, OptionsTable& opts, EquationGroups &eg);
+	void checkEquations(const ModuleAST& module, SymbolTable& st, OptionsTable& opts, EquationGroups& eg);
+	void checkFunctionType(const EquationAST* equation, const CallExprAST* call, SymbolTable& st, OptionsTable& opts,
+	                       EquationGroups& eg);
 	void checkFunction(ExprAST* expr, SymbolTable& st, OptionsTable& opts);
-	void checkStencilInfo(SymbolTable& st, EquationGroups &eg, TargetFunctionMeta &target, std::vector<ShiftInfo> &stencil_info);
-	void checkShiftInfo(SymbolTable& st, TargetFunctionMeta &target, ExprAST* expr, std::vector<ShiftInfo> &shift_info);
+	void checkStencilInfo(SymbolTable& st, EquationGroups& eg, TargetFunctionMeta& target,
+	                      std::vector<ShiftInfo>& stencil_info);
+	void checkShiftInfo(const ExprAST* expr, SymbolTable& st, TargetFunctionMeta& target,
+	                    std::vector<ShiftInfo>& shift_info);
+	void adjestEquationOrder(EquationGroups& eg, TargetFunctionMeta& target);
 
-	static bool getInteger(ExprAST* expr, int64_t &result);
-	static bool getFloat(ExprAST* expr, double &result);
+	static bool getInteger(ExprAST* expr, int64_t& result);
+	static bool getFloat(ExprAST* expr, double& result);
 };
-
 }
 
 #endif //EZ_COMPILE_SEMANTIC_H

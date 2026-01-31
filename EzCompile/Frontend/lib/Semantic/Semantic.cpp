@@ -10,10 +10,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Semantic.h"
+
+#include "Semantic/Semantic.h"
+
+#include <queue>
+
+#include "Semantic/DependencyGraph.h"
 
 namespace ezcompile {
-
 std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 	SymbolTable st;
 	OptionsTable opt;
@@ -40,18 +44,18 @@ std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 		else {
 			tfm.spaceDims.emplace_back(id);
 		}
-
 	}
 	tfm.func = opt.targetFunc.name;
 
+	adjestEquationOrder(eg, tfm);
 	checkStencilInfo(st, eg, tfm, stencil_info);
 
-	return std::make_unique<SemanticResult>(opt, st, eg,tfm, stencil_info);
+	return std::make_unique<SemanticResult>(opt, st, eg, tfm, stencil_info);
 }
 
 SymbolTable Semantic::collectDecls(const ModuleAST& module, SymbolTable& st) {
 	SymbolId id = 0;
-	for (const auto &decl : module.getDecls()) {
+	for (const auto& decl : module.getDecls()) {
 		auto name = decl->getName().str();
 
 		if (st.nameToId.find(name) != st.nameToId.end()) {
@@ -102,9 +106,8 @@ SymbolTable Semantic::collectDecls(const ModuleAST& module, SymbolTable& st) {
 	return st;
 }
 
-void Semantic::checkEquations(const ModuleAST& module, SymbolTable& st, OptionsTable& opts, EquationGroups &eg) {
-
-	for (auto & equation : module.getEquations()) {
+void Semantic::checkEquations(const ModuleAST& module, SymbolTable& st, OptionsTable& opts, EquationGroups& eg) {
+	for (auto& equation : module.getEquations()) {
 		auto left = equation->getLHS();
 		if (auto call = llvm::dyn_cast<CallExprAST>(left)) {
 			auto name = call->getCallee().str();
@@ -127,21 +130,21 @@ void Semantic::checkEquations(const ModuleAST& module, SymbolTable& st, OptionsT
 }
 
 void Semantic::checkFunctionType(
-	const EquationAST * equation,
-	const CallExprAST * call,
+	const EquationAST* equation,
+	const CallExprAST* call,
 	SymbolTable& st,
 	OptionsTable& opts,
-	EquationGroups &eg
-	) {
+	EquationGroups& eg
+) {
 	std::string err;
-	std::string time = *opts.getStr("timeVar",err);
+	std::string time = *opts.getStr("timeVar", err);
 
-	auto &args = call->getArgs();
+	auto& args = call->getArgs();
 	if (call->getArgs().size() != opts.targetFunc.args.size()) {
 		//参数不一样多
 		emitError(call->getBeginLoc(),
-		"The number of parameters in the targetFunction does not match");
-		return ;
+		          "The number of parameters in the targetFunction does not match");
+		return;
 	}
 
 	//用于记录方程类型
@@ -157,25 +160,25 @@ void Semantic::checkFunctionType(
 			if (auto timeVar = llvm::dyn_cast<VarRefExprAST>(var)) {
 				if (timeVar->getName() != time) {
 					emitError(var->getBeginLoc(),
-						"The " + std::to_string(i) + "th parameter must be a timeVar");
-					return ;
+					          "The " + std::to_string(i) + "th parameter must be a timeVar");
+					return;
 				}
 			}
 			else if (auto timeAddVar = llvm::dyn_cast<BinaryExprAST>(var)) {
 				if (timeAddVar->toString() != time + "+1") {
 					emitError(var->getBeginLoc(),
-						"The " + std::to_string(i) + "th parameter must be a timeVar");
-					return ;
+					          "The " + std::to_string(i) + "th parameter must be a timeVar");
+					return;
 				}
 				//t+1是迭代方程
 				isIteration = true;
 			}
-			else if (auto num = llvm::dyn_cast<IntExprAST>(var)){
+			else if (auto num = llvm::dyn_cast<IntExprAST>(var)) {
 				auto value = num->getValue();
 				auto sb = st.lookup(time);
 				if (value < sb->domain.lower || value > sb->domain.upper) {
-					emitError(var->getBeginLoc(),"The time variable exceeds the declared range");
-					return ;
+					emitError(var->getBeginLoc(), "The time variable exceeds the declared range");
+					return;
 				}
 				anchor.dim.emplace_back(id);
 				anchor.index.emplace_back(num->getValue());
@@ -184,8 +187,8 @@ void Semantic::checkFunctionType(
 			else {
 				//可能是浮点数
 				emitError(var->getBeginLoc(),
-							"The " + std::to_string(i) + "th parameter must be a timeVar");
-				return ;
+				          "The " + std::to_string(i) + "th parameter must be a timeVar");
+				return;
 			}
 		}
 		else {
@@ -193,16 +196,16 @@ void Semantic::checkFunctionType(
 			if (auto anotherVar = llvm::dyn_cast<VarRefExprAST>(var)) {
 				if (anotherVar->getName() != opts.targetFunc.args[i]) {
 					emitError(var->getBeginLoc(),
-						"The " + std::to_string(i) + "th parameter does not match");
-					return ;
+					          "The " + std::to_string(i) + "th parameter does not match");
+					return;
 				}
 			}
 			else if (auto num = llvm::dyn_cast<IntExprAST>(var)) {
 				auto value = num->getValue();
 				auto sb = st.lookup(opts.targetFunc.args[i]);
 				if (value < sb->domain.lower || value > sb->domain.upper) {
-					emitError(var->getBeginLoc(),"The time variable exceeds the declared range");
-					return ;
+					emitError(var->getBeginLoc(), "The time variable exceeds the declared range");
+					return;
 				}
 				anchor.dim.emplace_back(id);
 				anchor.index.emplace_back(num->getValue());
@@ -213,29 +216,29 @@ void Semantic::checkFunctionType(
 				auto lhs = bop->getLHS();
 				auto rhs = bop->getRHS();
 				if (op != '+' && op != '-') {
-					emitError(var->getBeginLoc(),"The operator must is '+' or '-'");
-					return ;
+					emitError(var->getBeginLoc(), "The operator must is '+' or '-'");
+					return;
 				}
 
 				if (auto selfVar = llvm::dyn_cast<VarRefExprAST>(lhs)) {
 					if (selfVar->getName() != opts.targetFunc.args[i]) {
 						emitError(lhs->getBeginLoc(),
-							"The " + std::to_string(i) + "th parameter does not match");
-						return ;
+						          "The " + std::to_string(i) + "th parameter does not match");
+						return;
 					}
 					if (!llvm::isa<IntExprAST>(rhs)) {
-						emitError(rhs->getBeginLoc(),"rhs must is a Interger");
-						return ;
+						emitError(rhs->getBeginLoc(), "rhs must is a Interger");
+						return;
 					}
 					isIteration = true;
 				}
 				else {
-					emitError(lhs->getBeginLoc(),"The left must is a var");
-					return ;
+					emitError(lhs->getBeginLoc(), "The left must is a var");
+					return;
 				}
 			}
 			else {
-				emitError(call->getBeginLoc(),"function is undefine");
+				emitError(call->getBeginLoc(), "function is undefine");
 			}
 		}
 	}
@@ -245,18 +248,18 @@ void Semantic::checkFunctionType(
 	}
 	else if (!isIteration && isBoundary && !isInit) {
 		if (anchor.dim.empty()) {
-			emitError(equation->getBeginLoc(),"anchor is uninitialized");
+			emitError(equation->getBeginLoc(), "anchor is uninitialized");
 		}
 		eg.boundary.emplace_back(EquationAnchor{equation, anchor});
 	}
 	else if (!isIteration && !isBoundary && isInit) {
 		if (anchor.dim.empty()) {
-			emitError(equation->getBeginLoc(),"anchor is uninitialized");
+			emitError(equation->getBeginLoc(), "anchor is uninitialized");
 		}
 		eg.init.emplace_back(EquationAnchor{equation, anchor});
 	}
 	else {
-		emitError(equation->getBeginLoc(),"equation have more than two type");
+		emitError(equation->getBeginLoc(), "equation have more than two type");
 	}
 }
 
@@ -267,7 +270,7 @@ void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTab
 	int64_t valInt;
 	double valDouble;
 
-	for (auto & option : module.getOptions()) {
+	for (auto& option : module.getOptions()) {
 		auto key = option->getKey().str();
 		auto expr = option->getValue();
 
@@ -277,7 +280,7 @@ void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTab
 		}
 
 		if (auto value = llvm::dyn_cast<StringExprAST>(expr)) {
-			result = opts.set(key, value->getValue().str(),err);
+			result = opts.set(key, value->getValue().str(), err);
 		}
 		else if (getInteger(expr, valInt)) {
 			result = opts.set(key, valInt, err);
@@ -291,11 +294,11 @@ void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTab
 		}
 	}
 
-	auto timeVar = *opts.getStr("timeVar",err);
+	auto timeVar = *opts.getStr("timeVar", err);
 
 	if (st.lookup(timeVar) == nullptr) {
 		emitError(module.getEndLoc(), "timeVar undeclared");
-		return ;
+		return;
 	}
 
 	for (size_t i = 0; i < opts.targetFunc.args.size(); ++i) {
@@ -305,7 +308,7 @@ void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTab
 			}
 			else {
 				emitError(module.getEndLoc(), "targetFunction have two timeVar");
-				return ;
+				return;
 			}
 		}
 	}
@@ -314,7 +317,7 @@ void Semantic::checkOptions(const ModuleAST& module, SymbolTable& st, OptionsTab
 	}
 }
 
-void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts) {
+void Semantic::checkFunction(ExprAST* expr, SymbolTable& st, OptionsTable& opts) {
 	auto e = llvm::dyn_cast<StringExprAST>(expr);
 	if (!e) {
 		emitError(expr->getBeginLoc(), "Function name must be a string");
@@ -329,14 +332,14 @@ void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts)
 
 	if (left == 0) {
 		emitError(expr->getBeginLoc(), "No function name");
-		return ;
+		return;
 	}
 	if (right > function.size() - 1) {
-		emitError(expr->getBeginLoc(),"There are extra characters");
+		emitError(expr->getBeginLoc(), "There are extra characters");
 		return;
 	}
 
-	std::string name = function.substr(0,left);
+	std::string name = function.substr(0, left);
 	opts.targetFunc.name = name;
 
 	size_t begin = left + 1;
@@ -349,7 +352,7 @@ void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts)
 
 		if (st.lookup(arg) == nullptr) {
 			emitError(expr->getBeginLoc(), arg + " is an undeclared variable in the function");
-			return ;
+			return;
 		}
 
 		opts.targetFunc.args.emplace_back(arg);
@@ -359,39 +362,47 @@ void Semantic::checkFunction(ExprAST *expr, SymbolTable& st, OptionsTable& opts)
 	}
 }
 
-void Semantic::checkStencilInfo(SymbolTable& st, EquationGroups &eg, TargetFunctionMeta &target, std::vector<ShiftInfo> &stencil_info) {
+void Semantic::checkStencilInfo(SymbolTable& st, EquationGroups& eg, TargetFunctionMeta& target,
+                                std::vector<ShiftInfo>& stencil_info) {
 	std::set<ShiftInfo> stencil;
-	for (auto &es : eg.iter) {
+	for (auto& es : eg.iter) {
 		std::vector<ShiftInfo> shift_info;
 		auto lhs = es.eq->getLHS();
 		auto rhs = es.eq->getRHS();
-		// TODO 这里智能指针的使用很混乱，考虑全部用罗指针
-		checkShiftInfo(st, target, const_cast<ExprAST*>(lhs), shift_info);
-		checkShiftInfo(st, target, const_cast<ExprAST*>(rhs), shift_info);
+
+		walkExpr(lhs, [&](const ExprAST* lhs) {
+			checkShiftInfo(lhs, st, target, stencil_info);
+			return true;
+		});
+		walkExpr(lhs, [&](const ExprAST* rhs) {
+			checkShiftInfo(rhs, st, target, stencil_info);
+			return true;
+		});
 
 		// 存储该方程的所有偏移信息
-		for (auto &info : shift_info) {
+		for (auto& info : shift_info) {
 			stencil.insert(info);
 		}
 	}
 
 	// 去重后的偏移信息共同组成了方程组的模板信息
-	for (auto &info : stencil) {
+	for (auto& info : stencil) {
 		stencil_info.emplace_back(info);
 	}
 }
 
-void Semantic::checkShiftInfo(SymbolTable& st, TargetFunctionMeta &target, ExprAST* expr, std::vector<ShiftInfo> &shift_info) {
+void Semantic::checkShiftInfo(const ExprAST* expr, SymbolTable& st, TargetFunctionMeta& target,
+                              std::vector<ShiftInfo>& shift_info) {
 	if (auto call = llvm::dyn_cast<CallExprAST>(expr)) {
 		auto func = call->getCallee();
-		if (func != target.func) return ;
+		if (func != target.func) return;
 
-		auto &args = call->getArgs();
+		auto& args = call->getArgs();
 		for (size_t i = 0; i < args.size(); i++) {
 			if (i == target.timeDim) continue;
 
 			// 这里除了时间变量外，其余变量均要枚举
-			if (auto bop = llvm::dyn_cast<BinaryExprAST>(args[i])) {
+			if (auto bop = llvm::dyn_cast<BinaryExprAST>(args[i].get())) {
 				auto op = bop->getOp();
 				auto lhs = bop->getLHS();
 				auto rhs = bop->getRHS();
@@ -409,28 +420,57 @@ void Semantic::checkShiftInfo(SymbolTable& st, TargetFunctionMeta &target, ExprA
 			}
 		}
 	}
-	else if (auto bop = llvm::dyn_cast<BinaryExprAST>(expr)) {
-		auto lhs = bop->getLHS();
-		auto rhs = bop->getRHS();
-		// 枚举左右子树
-		checkShiftInfo(st, target, lhs, shift_info);
-		checkShiftInfo(st, target, rhs, shift_info);
+}
+
+void Semantic::adjestEquationOrder(EquationGroups& eg, TargetFunctionMeta& target) {
+	EqGraph G;
+
+	// 首先收集所有方程的左侧定义
+	llvm::StringMap<const EquationAST*> definite;
+	for (auto& e : eg.iter) {
+		EqNode node;
+		node.eq = e.eq;
+		G.addNode(node);
+
+		auto lhs = e.eq->getLHS();
+		if (auto call = llvm::dyn_cast<CallExprAST>(lhs)) {
+			if (call->getCallee() != target.func) {
+				definite[call->getCallee()] = e.eq;
+			}
+		}
 	}
-	else if (auto paren = llvm::dyn_cast<ParenExprAST>(expr)) {
-		checkShiftInfo(st, target, paren->getSub(), shift_info);
+
+	// 枚举所有方程，找到每个方程对应的依赖方程
+	for (auto& e : eg.iter) {
+		walkExpr(e.eq->getRHS(), [&](const ExprAST* lhs) {
+			if (auto call = llvm::dyn_cast<CallExprAST>(lhs)) {
+				auto name = call->getCallee();
+				if (definite.contains(name)) {
+					G.addEdge(definite[name], e.eq);
+				}
+			}
+			return true;
+		});
 	}
-	else if (auto uexpr = llvm::dyn_cast<UnaryExprAST>(expr)) {
-		checkShiftInfo(st, target, uexpr->getOperand(), shift_info);
+
+	// 用当前依赖图的bfs更新远方程序
+	auto result = G.getTopoOrder();
+	if (mlir::failed(result)) {
+		emitError(eg.iter[0].eq->getBeginLoc(), "There must be no circular dependencies.");
+	}
+
+	for (size_t i = 0; i < result->size(); i++) {
+		eg.iter[i].eq = result->at(i);
 	}
 }
 
-bool Semantic::getInteger(ExprAST* expr, int64_t &result) {
-	if (auto *num = llvm::dyn_cast<IntExprAST>(expr)) {
+bool Semantic::getInteger(ExprAST* expr, int64_t& result) {
+	if (auto* num = llvm::dyn_cast<IntExprAST>(expr)) {
 		result = num->getValue();
 		return true;
 	}
-	if (auto *unNum = llvm::dyn_cast<UnaryExprAST>(expr)) {
-		if (auto *num = llvm::dyn_cast<IntExprAST>(unNum->getOperand())) {
+	if (auto* unNum = llvm::dyn_cast<UnaryExprAST>(expr)) {
+		if (auto* num = llvm::dyn_cast<IntExprAST>(unNum->getOperand())) {
 			result = num->getValue();
 			if (unNum->getOp() == '-') {
 				result = -result;
@@ -441,13 +481,13 @@ bool Semantic::getInteger(ExprAST* expr, int64_t &result) {
 	return false;
 }
 
-bool Semantic::getFloat(ExprAST* expr, double &result) {
-	if (auto *num = llvm::dyn_cast<FloatExprAST>(expr)) {
+bool Semantic::getFloat(ExprAST* expr, double& result) {
+	if (auto* num = llvm::dyn_cast<FloatExprAST>(expr)) {
 		result = num->getValue();
 		return true;
 	}
-	if (auto *unNum = llvm::dyn_cast<UnaryExprAST>(expr)) {
-		if (auto *num = llvm::dyn_cast<FloatExprAST>(unNum->getOperand())) {
+	if (auto* unNum = llvm::dyn_cast<UnaryExprAST>(expr)) {
+		if (auto* num = llvm::dyn_cast<FloatExprAST>(unNum->getOperand())) {
 			result = num->getValue();
 			if (unNum->getOp() == '-') {
 				result = -result;
@@ -457,6 +497,4 @@ bool Semantic::getFloat(ExprAST* expr, double &result) {
 	}
 	return false;
 }
-
-
 }

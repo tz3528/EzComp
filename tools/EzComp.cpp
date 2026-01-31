@@ -21,7 +21,7 @@
 
 #include "EzCompile/Frontend/include/Parser.h"
 #include "EzCompile/Frontend/include/AST.h"
-#include "EzCompile/Frontend/include/Semantic.h"
+#include "EzCompile/Frontend/include/Semantic/Semantic.h"
 #include "EzCompile/Midend/IRGen/include/MLIRGen.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 

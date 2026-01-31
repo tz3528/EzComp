@@ -25,7 +25,7 @@
 #include "mlir/IR/Value.h"
 
 #include "Comp.h"
-#include "Semantic.h"
+#include "Semantic/Semantic.h"
 #include "Dialects/Comp/include/Comp.h"
 
 
