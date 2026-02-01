@@ -119,14 +119,17 @@ private:
 	}
 
 	const ParsedModule &pm;
+	const SemanticResult *sema;
 	mlir::MLIRContext &context;
 	mlir::OpBuilder builder;
 	mlir::ModuleOp IRModule;
 
-	llvm::DenseMap<SymbolId, mlir::Value> dimIndexEnv; // dim -> index value
-	llvm::DenseMap<SymbolId, mlir::Value> dimCoordEnv; // dim -> f64 coord value
+	llvm::DenseMap<SymbolId, mlir::Value> dimIndexEnv;	// dim -> index value
+	llvm::DenseMap<SymbolId, mlir::Value> dimCoordEnv;	// dim -> f64 coord value
 
-	llvm::SmallVector<mlir::Value, 4> boundaryHandles;
+	llvm::SmallVector<mlir::Value, 4> boundaryHandles;	// 存储所以边界方程的句柄或属性
+
+	std::map<ShiftInfo, mlir::Value> shiftInfoEnv;	// 每个偏移量都对应一个句柄
 
 	struct TimeLoopCtx {
 		comp::ForTimeOp loop;			// 循环操作符

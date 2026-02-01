@@ -55,6 +55,7 @@ def Comp_BoundaryType : TypeDef<Comp_Dialect, "Boundary"> {
 //===----------------------------------------------------------------------===//
 // Attributes
 //   - #comp.anchor<...>
+//   - #comp.range<...>
 //===----------------------------------------------------------------------===//
 
 def Comp_AnchorAttr : AttrDef<Comp_Dialect, "Anchor"> {
@@ -69,4 +70,17 @@ def Comp_AnchorAttr : AttrDef<Comp_Dialect, "Anchor"> {
 
     let assemblyFormat =
         "`<` `dim` `=` $dim `,` `index` `=` $index `>`";
+}
+
+def Comp_RangeAttr : AttrDef<Comp_Dialect, "Range"> {
+    let mnemonic = "range";
+
+    // dim 用符号引用，lower/upper 允许为负（例如 upper=-2 表示 N-2）
+    let parameters = (ins
+        "mlir::FlatSymbolRefAttr":$dim,
+        "mlir::IntegerAttr":$lower,
+        "mlir::IntegerAttr":$upper
+    );
+
+    let assemblyFormat = "`<` `dim` `=` $dim `,` `lower` `=` $lower `,` `upper` `=` $upper `>`";
 }

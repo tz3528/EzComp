@@ -67,19 +67,25 @@ struct EquationAnchor {
 };
 
 /**
- * 用于记录函数里面某个维度的偏移量。
+ * 用于记录函数里面所有维度的偏移量。
  */
 struct ShiftInfo {
-	SymbolId dim;
-	int64_t offset;
+	llvm::SmallVector<SymbolId, 4> dim;
+	llvm::SmallVector<int64_t, 4> offset;
 
 	bool operator==(const ShiftInfo& other) const { return dim == other.dim && offset == other.offset; }
 	bool operator<(const ShiftInfo& other) const { return dim != other.dim ? dim < other.dim : offset < other.offset; }
 };
 
-struct EquationShiftInfo {
-	const EquationAST* eq;
-	std::vector<ShiftInfo> shift_infos;
+struct StencilInfo {
+	// 记录每个变量都有哪些偏移量
+	std::map<SymbolId, std::set<int64_t>> symbol_info;
+
+	// 记录每个待求函数调用时，其各个维度的偏移量
+	std::map<const CallExprAST*, ShiftInfo> call_info;
+
+	// 记录所有的偏移量信息
+	std::set<ShiftInfo> shift_infos;
 };
 
 // ------------------------------------------------------
@@ -93,7 +99,7 @@ struct EquationGroups {
 	std::vector<EquationAnchor> boundary;
 
 	// 每次迭代的普通方程：如 PDE 主方程/离散模板等
-	std::vector<EquationShiftInfo> iter;
+	std::vector<const EquationAST* > iter;
 };
 
 // ------------------------------------------------------
@@ -123,7 +129,7 @@ struct SemanticResult {
 	TargetFunctionMeta target;
 
 	// 模板信息
-	std::vector<ShiftInfo> stencil_info;
+	StencilInfo stencil_info;
 };
 
 /// 用于存储解析结果和语法分析中的内容
@@ -151,9 +157,11 @@ private:
 	                       EquationGroups& eg);
 	void checkFunction(ExprAST* expr, SymbolTable& st, OptionsTable& opts);
 	void checkStencilInfo(SymbolTable& st, EquationGroups& eg, TargetFunctionMeta& target,
-	                      std::vector<ShiftInfo>& stencil_info);
+	                      StencilInfo & stencil_info);
+
+	// 求出当前表达式所包含的所有偏移量信息,并记录在模板信息中
 	void checkShiftInfo(const ExprAST* expr, SymbolTable& st, TargetFunctionMeta& target,
-	                    std::vector<ShiftInfo>& shift_info);
+	                    StencilInfo& shift_info);
 	void adjestEquationOrder(EquationGroups& eg, TargetFunctionMeta& target);
 
 	static bool getInteger(ExprAST* expr, int64_t& result);

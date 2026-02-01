@@ -22,7 +22,7 @@ std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 	SymbolTable st;
 	OptionsTable opt;
 	EquationGroups eg;
-	std::vector<ShiftInfo> stencil_info;
+	StencilInfo stencil_info;
 
 	auto result = OptionsTable::createWithDefaults();
 	if (!result) {
@@ -244,7 +244,7 @@ void Semantic::checkFunctionType(
 	}
 
 	if (isIteration && !isBoundary && !isInit) {
-		eg.iter.emplace_back(EquationShiftInfo{equation, {}});
+		eg.iter.emplace_back(equation);
 	}
 	else if (!isIteration && isBoundary && !isInit) {
 		if (anchor.dim.empty()) {
@@ -363,44 +363,31 @@ void Semantic::checkFunction(ExprAST* expr, SymbolTable& st, OptionsTable& opts)
 }
 
 void Semantic::checkStencilInfo(SymbolTable& st, EquationGroups& eg, TargetFunctionMeta& target,
-                                std::vector<ShiftInfo>& stencil_info) {
-	std::set<ShiftInfo> stencil;
-	for (auto& es : eg.iter) {
-		std::vector<ShiftInfo> shift_info;
-		auto lhs = es.eq->getLHS();
-		auto rhs = es.eq->getRHS();
+                                StencilInfo & stencil_info) {
+	for (auto& eq : eg.iter) {
+		auto lhs = eq->getLHS();
+		auto rhs = eq->getRHS();
 
 		walkExpr(lhs, [&](const ExprAST* lhs) {
 			checkShiftInfo(lhs, st, target, stencil_info);
 			return true;
 		});
-		walkExpr(lhs, [&](const ExprAST* rhs) {
+		walkExpr(rhs, [&](const ExprAST* rhs) {
 			checkShiftInfo(rhs, st, target, stencil_info);
 			return true;
 		});
-
-		// 存储该方程的所有偏移信息
-		for (auto& info : shift_info) {
-			stencil.insert(info);
-		}
-	}
-
-	// 去重后的偏移信息共同组成了方程组的模板信息
-	for (auto& info : stencil) {
-		stencil_info.emplace_back(info);
 	}
 }
 
 void Semantic::checkShiftInfo(const ExprAST* expr, SymbolTable& st, TargetFunctionMeta& target,
-                              std::vector<ShiftInfo>& shift_info) {
+                              StencilInfo & stencil_info) {
 	if (auto call = llvm::dyn_cast<CallExprAST>(expr)) {
-		auto func = call->getCallee();
+		auto func = call->getCallee().str();
 		if (func != target.func) return;
 
 		auto& args = call->getArgs();
+		ShiftInfo info;
 		for (size_t i = 0; i < args.size(); i++) {
-			if (i == target.timeDim) continue;
-
 			// 这里除了时间变量外，其余变量均要枚举
 			if (auto bop = llvm::dyn_cast<BinaryExprAST>(args[i].get())) {
 				auto op = bop->getOp();
@@ -408,17 +395,34 @@ void Semantic::checkShiftInfo(const ExprAST* expr, SymbolTable& st, TargetFuncti
 				auto rhs = bop->getRHS();
 				if (auto var = llvm::dyn_cast<VarRefExprAST>(lhs)) {
 					if (auto num = llvm::dyn_cast<IntExprAST>(rhs)) {
-						if (op == '+' || op == '-') {
-							// 变量 +或- 常量，说明符合偏移模式
-							auto value = num->getValue();
-							auto name = var->getName().str();
-							auto id = st.lookup(name)->id;
-							shift_info.emplace_back(id, value);
+						auto value = num->getValue();
+						auto name = var->getName().str();
+						auto id = st.lookup(name)->id;
+
+						// 变量 +或- 常量，说明符合偏移模式
+						if (op == '+') {
+							info.dim.emplace_back(id);
+							info.offset.emplace_back(value);
+						}
+						else if (op == '-') {
+							info.dim.emplace_back(id);
+							info.offset.emplace_back(-value);
 						}
 					}
 				}
 			}
+			else if (auto var = llvm::dyn_cast<VarRefExprAST>(args[i].get())) {
+				auto name = var->getName().str();
+				auto id = st.lookup(name)->id;
+				info.dim.emplace_back(id);
+				info.offset.emplace_back(0);
+			}
 		}
+		stencil_info.call_info.emplace(call, info);
+		for (size_t i = 0; i < info.dim.size(); ++i) {
+			stencil_info.symbol_info[info.dim[i]].insert(info.offset[i]);
+		}
+		stencil_info.shift_infos.insert(info);
 	}
 }
 
@@ -427,26 +431,26 @@ void Semantic::adjestEquationOrder(EquationGroups& eg, TargetFunctionMeta& targe
 
 	// 首先收集所有方程的左侧定义
 	llvm::StringMap<const EquationAST*> definite;
-	for (auto& e : eg.iter) {
+	for (auto& eq : eg.iter) {
 		EqNode node;
-		node.eq = e.eq;
+		node.eq = eq;
 		G.addNode(node);
 
-		auto lhs = e.eq->getLHS();
+		auto lhs = eq->getLHS();
 		if (auto call = llvm::dyn_cast<CallExprAST>(lhs)) {
-			if (call->getCallee() != target.func) {
-				definite[call->getCallee()] = e.eq;
+			if (call->getCallee().str() != target.func) {
+				definite[call->getCallee().str()] = eq;
 			}
 		}
 	}
 
 	// 枚举所有方程，找到每个方程对应的依赖方程
-	for (auto& e : eg.iter) {
-		walkExpr(e.eq->getRHS(), [&](const ExprAST* lhs) {
+	for (auto& eq : eg.iter) {
+		walkExpr(eq->getRHS(), [&](const ExprAST* lhs) {
 			if (auto call = llvm::dyn_cast<CallExprAST>(lhs)) {
-				auto name = call->getCallee();
+				auto name = call->getCallee().str();
 				if (definite.contains(name)) {
-					G.addEdge(definite[name], e.eq);
+					G.addEdge(definite[name], eq);
 				}
 			}
 			return true;
@@ -456,11 +460,11 @@ void Semantic::adjestEquationOrder(EquationGroups& eg, TargetFunctionMeta& targe
 	// 用当前依赖图的bfs更新远方程序
 	auto result = G.getTopoOrder();
 	if (mlir::failed(result)) {
-		emitError(eg.iter[0].eq->getBeginLoc(), "There must be no circular dependencies.");
+		emitError(eg.iter[0]->getBeginLoc(), "There must be no circular dependencies.");
 	}
 
 	for (size_t i = 0; i < result->size(); i++) {
-		eg.iter[i].eq = result->at(i);
+		eg.iter[i] = result->at(i);
 	}
 }
 
