@@ -21,6 +21,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 namespace ezcompile {
 
@@ -39,6 +40,13 @@ public:
     llvm::SMLoc getEndLoc() const { return range.end; }
 
     void setRange(SourceRange r) { range = r; }
+
+    std::string getSourceText() const {
+        const char* b = range.begin.getPointer();
+        const char* e = range.end.getPointer();
+        if (!b || !e || e < b) return {};
+        return std::string(b, e); // 构造 [b, e) 的字符串
+    }
 
 protected:
     ASTNode() = default;
@@ -420,6 +428,48 @@ private:
 };
 
 void dump(ModuleAST &module );
+
+static bool walkExpr(const ExprAST* E,
+                     llvm::function_ref<bool(const ExprAST*)> pre) {
+    if (!E) return true;
+
+    // 每个节点向下递归前：统一回调一次
+    if (!pre(E)) return false;
+
+    switch (E->getKind()) {
+    case ExprAST::Kind::String:
+    case ExprAST::Kind::Integer:
+    case ExprAST::Kind::Float:
+    case ExprAST::Kind::VarRef:
+        return true; // 叶子节点，无子树
+
+    case ExprAST::Kind::Unary: {
+        auto* U = static_cast<const UnaryExprAST*>(E);
+        return walkExpr(U->getOperand(), pre);
+    }
+
+    case ExprAST::Kind::Binary: {
+        auto* B = static_cast<const BinaryExprAST*>(E);
+        if (!walkExpr(B->getLHS(), pre)) return false;
+        if (!walkExpr(B->getRHS(), pre)) return false;
+        return true;
+    }
+
+    case ExprAST::Kind::Call: {
+        auto* C = static_cast<const CallExprAST*>(E);
+        for (const auto& arg : C->getArgs()) {
+            if (!walkExpr(arg.get(), pre)) return false;
+        }
+        return true;
+    }
+
+    case ExprAST::Kind::Paren: {
+        auto* P = static_cast<const ParenExprAST*>(E);
+        return walkExpr(P->getSub(), pre);
+    }
+    }
+    return true;
+}
 
 } // namespace ezcompile
 

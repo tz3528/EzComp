@@ -18,11 +18,8 @@
 
 ### 2.2 属性
 
-`#comp.anchor<...>`：锚点（用于 init/boundary 的“固定维度”信息）。
-
-`index=<int>`（网格点索引）
-
-为避免冗余，通常不再需要 `value`（可作为 debug 信息另存）。
+`#comp.anchor<dim, index>`：锚点（用于 init/boundary 的“固定维度”信息）。
+`#comp.range<dim, lower, upper>`：用于表示该维度的枚举范围。
 
 ---
 
@@ -157,6 +154,12 @@ init 通常应固定 `timeDim` 到某一层（如 index=0）。
 
 region 结果返回（init/boundary/update 的 RHS）。
 
+### 3.14 `comp.call`
+
+`comp.call %diff(x, t, 1) : f64`
+
+对一个函数进行调用，在降级的时候具体实现
+
 ## 4. 完整示例
 
 > 1D heat equation 示例：
@@ -218,7 +221,7 @@ comp.problem attributes {
     comp.for_time %n = 0 to (%Nt - 1) step 1 {
 
       // 1) interior 更新：只更新 x 的内部点（1..N-2）
-      comp.update %u atTime=%n writeTime=(%n + 1) over=[@x:1..-2] {
+      comp.update %u atTime=%n writeTime=(%n + 1) over=[#comp.range<dim=@x, lower=1, upper=-2>] {
         ^bb0(%ix: index):
         
           // ---- stencil 读：u(x-1,n), u(x,n), u(x+1,n) ----
