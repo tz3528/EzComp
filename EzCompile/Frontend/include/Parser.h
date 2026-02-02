@@ -98,6 +98,8 @@ private:
 
     Token curTok;
 
+    Token prevTok;  // 前一个token，用于检测连续运算符
+
 };
 
 
