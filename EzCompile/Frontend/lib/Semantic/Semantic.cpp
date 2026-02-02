@@ -31,8 +31,19 @@ std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 	opt = *result;
 
 	collectDecls(module, st);
+	if (hadError()) {
+		return nullptr;
+	}
+
 	checkOptions(module, st, opt);
+	if (hadError()) {
+		return nullptr;
+	}
+
 	checkEquations(module, st, opt, eg);
+	if (hadError()) {
+		return nullptr;
+	}
 
 	TargetFunctionMeta tfm;
 
@@ -48,6 +59,10 @@ std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 	tfm.func = opt.targetFunc.name;
 
 	adjestEquationOrder(eg, tfm);
+	if (hadError()) {
+		return nullptr;
+	}
+
 	checkStencilInfo(st, eg, tfm, stencil_info);
 
 	return std::make_unique<SemanticResult>(opt, st, eg, tfm, stencil_info);
