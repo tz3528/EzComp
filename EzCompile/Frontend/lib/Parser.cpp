@@ -253,10 +253,10 @@ int Parser::getTokPrecedence() const {
     switch (curTok.getKind()) {
     case Token::plus:
     case Token::minus:
-        return 10;
+        return 20;
     case Token::star:
     case Token::slash:
-        return 20;
+        return 40;
     default:
         return -1;
     }
