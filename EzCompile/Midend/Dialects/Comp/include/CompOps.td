@@ -119,9 +119,6 @@ def CoordOp : Comp_Op<"coord"> {
 
     // 示例打印： %x = comp.coord @x %ix : f64
     let assemblyFormat = "$dim $iv attr-dict `:` type($coord)";
-
-    // points >= 2, upper > lower（如果这些已由 comp.dim verifier 保证，可不重复）
-    let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
