@@ -192,7 +192,12 @@ void Semantic::checkFunctionType(
 				auto value = num->getValue();
 				auto sb = st.lookup(time);
 				if (value < sb->domain.lower || value > sb->domain.upper) {
-					emitError(var->getBeginLoc(), "The time variable exceeds the declared range");
+					emitError(var->getBeginLoc(), "The initial condition time value exceeds the declared range");
+					return;
+				}
+				// 初始条件必须固定在时间起始点
+				if (value != sb->domain.lower) {
+					emitError(var->getBeginLoc(), "Initial conditions must be set at the time starting point (t=" + std::to_string(sb->domain.lower) + ")");
 					return;
 				}
 				anchor.dim.emplace_back(id);
@@ -219,7 +224,7 @@ void Semantic::checkFunctionType(
 				auto value = num->getValue();
 				auto sb = st.lookup(opts.targetFunc.args[i]);
 				if (value < sb->domain.lower || value > sb->domain.upper) {
-					emitError(var->getBeginLoc(), "The time variable exceeds the declared range");
+					emitError(var->getBeginLoc(), "The dimension value exceeds the declared range");
 					return;
 				}
 				anchor.dim.emplace_back(id);
