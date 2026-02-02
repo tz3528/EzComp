@@ -41,6 +41,7 @@ namespace ezcompile {
 class MLIRGen {
 
 	struct TimeLoopCtx;
+	mlir::FloatType f64Ty;
 
 public:
 	MLIRGen(const ParsedModule &pm, mlir::MLIRContext &context);
@@ -130,6 +131,9 @@ private:
 	llvm::SmallVector<mlir::Value, 4> boundaryHandles;	// 存储所以边界方程的句柄或属性
 
 	std::map<ShiftInfo, mlir::Value> shiftInfoEnv;	// 每个偏移量都对应一个句柄
+
+
+	llvm::StringMap<mlir::Value> eqValue;			// 根据函数的完整文本找到对应的句柄
 
 	struct TimeLoopCtx {
 		comp::ForTimeOp loop;			// 循环操作符

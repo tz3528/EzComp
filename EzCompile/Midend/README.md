@@ -154,6 +154,12 @@ init 通常应固定 `timeDim` 到某一层（如 index=0）。
 
 region 结果返回（init/boundary/update 的 RHS）。
 
+### 3.14 `comp.call`
+
+`comp.call %diff(x, t, 1) : f64`
+
+对一个函数进行调用，在降级的时候具体实现
+
 ## 4. 完整示例
 
 > 1D heat equation 示例：

@@ -41,6 +41,13 @@ public:
 
     void setRange(SourceRange r) { range = r; }
 
+    std::string getSourceText() const {
+        const char* b = range.begin.getPointer();
+        const char* e = range.end.getPointer();
+        if (!b || !e || e < b) return {};
+        return std::string(b, e); // 构造 [b, e) 的字符串
+    }
+
 protected:
     ASTNode() = default;
     explicit ASTNode(SourceRange r) : range(r) {}

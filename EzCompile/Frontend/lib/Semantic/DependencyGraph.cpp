@@ -46,9 +46,19 @@ mlir::FailureOr<std::vector<const EquationAST*>> EqGraph::getTopoOrder() {
 	return result;
 }
 
-void outputDotGraph(const EqGraph &G) {
+void outputDotGraph(const EqGraph &G,std::string DotPath) {
 	if (G.nodes.empty()) return;
-	llvm::WriteGraph(llvm::outs(), &G, "Dependency Graph", "Dependency Graph");
+
+	std::error_code EC;
+	llvm::raw_fd_ostream OS(DotPath, EC, llvm::sys::fs::OF_Text);
+	if (EC) {
+		llvm::errs() << "Failed to open " << DotPath << ": " << EC.message() << "\n";
+		return;
+	}
+
+	// 保持你原来的调用方式（参数签名不变）
+	llvm::WriteGraph(OS, &G, "dependency_graph", "Dependency Graph");
+	OS.flush();
 }
 
 

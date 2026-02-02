@@ -21,6 +21,7 @@ namespace ezcompile {
 MLIRGen::MLIRGen(const ParsedModule& pm, mlir::MLIRContext& context)
 	: pm(pm), builder(&context), context(context) {
 	sema = pm.sema.get();
+	f64Ty = builder.getF64Type();
 }
 
 mlir::FailureOr<mlir::ModuleOp> MLIRGen::mlirGen() {
@@ -241,7 +242,6 @@ mlir::LogicalResult MLIRGen::genApplyInit(mlir::Value field) {
 	const auto& meta = pm.sema->target;
 
 	auto initEa = pm.sema->egs.init;
-	auto f64Ty = builder.getF64Type();
 	auto idxTy = builder.getIndexType();
 
 	for (const auto& ea : initEa) {
@@ -323,7 +323,6 @@ mlir::LogicalResult MLIRGen::genDirichlet(mlir::Value field) {
 	const auto& meta = pm.sema->target;
 
 	auto boundaryEa = pm.sema->egs.boundary;
-	auto f64Ty = builder.getF64Type();
 	auto idxTy = builder.getIndexType();
 
 	for (const auto& ea : boundaryEa) {
@@ -430,7 +429,11 @@ mlir::LogicalResult MLIRGen::genForTime(mlir::Value field, mlir::Value timePoint
 		tctx.writeTime = mlir::arith::AddIOp::create(builder, loc, tctx.atTime, c1);
 
 		dimIndexEnv.clear();
-		dimIndexEnv[sema->target.timeDim] = body->getArgument(0);
+		dimCoordEnv.clear();
+		auto tid = sema->target.timeDim;
+		dimIndexEnv[tid] = body->getArgument(0);
+		dimCoordEnv[tid] = comp::CoordOp::create(builder, loc, f64Ty, mkDimRef(tid), body->getArgument(0));
+
 		if (mlir::failed(genUpdate(field, tctx))) {
 			return mlir::failure();
 		}
@@ -471,19 +474,38 @@ mlir::LogicalResult MLIRGen::genUpdate(mlir::Value field, TimeLoopCtx tctx) {
 	auto* bb = new mlir::Block();
 	body.push_back(bb);
 
-	// 这里存起来每个变量的句柄
-	for (size_t i = 0; i < sema->target.spaceDims.size(); ++i) {
-		bb->addArgument(builder.getIndexType(), loc);
-		dimIndexEnv[sema->target.spaceDims[i]] = bb->getArgument(i);
-	}
-
 	builder.setInsertionPointToStart(bb);
 
+	// 这里存起来每个变量下标和值的句柄
+	for (size_t i = 0; i < sema->target.spaceDims.size(); ++i) {
+		bb->addArgument(builder.getIndexType(), loc);
+		auto id = sema->target.spaceDims[i];
+		dimIndexEnv[id] = bb->getArgument(i);
+		dimCoordEnv[id] = comp::CoordOp::create(builder, loc, f64Ty, mkDimRef(id), bb->getArgument(i));
+	}
+
+	// sample
 	if (mlir::failed(genSample(field))) {
 		return mlir::failure();
 	}
 
-	if (mlir::failed(emitYield(loc, field))) {
+
+	// expr
+	mlir::Value ans;
+	for (auto eq : sema->egs.iter) {
+		const ExprAST *lhs = eq->getLHS();
+		const ExprAST *rhs = eq->getRHS();
+
+		auto rhsVOr = genExpr(rhs);
+		if (mlir::failed(rhsVOr)) {
+			return mlir::failure();
+		}
+
+		eqValue[lhs->getSourceText()] = *rhsVOr;
+		ans = *rhsVOr;
+	}
+
+	if (mlir::failed(emitYield(loc, ans))) {
 		return mlir::failure();
 	}
 
@@ -589,13 +611,19 @@ mlir::FailureOr<mlir::Value> MLIRGen::genFloatExpr(const FloatExprAST* expr) {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
 	const double value = expr->getValue();
-	auto f64Ty = builder.getF64Type();
 	auto attr = builder.getF64FloatAttr(value);
 	return mlir::arith::ConstantOp::create(builder, loc, f64Ty, attr).getResult();
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genVarRefExpr(const VarRefExprAST* expr) {
-	// TODO 可能是不会用到的
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
+	auto id = sema->st.lookup(expr->getName().str())->id;
+
+	auto it = dimCoordEnv.find(id);
+	if (it == dimCoordEnv.end()) {
+		return mlir::emitError(loc, expr->getName().str() + " not have a corresponding comp.coord");
+	}
+	return dimCoordEnv[id];
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genUnaryExpr(const UnaryExprAST* expr) {
@@ -736,6 +764,33 @@ mlir::FailureOr<mlir::Value> MLIRGen::genBinaryExpr(const BinaryExprAST* expr) {
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genCallExpr(const CallExprAST* expr) {
+	mlir::Location loc = mlir::UnknownLoc::get(&context);
+
+	auto name = expr->getCallee().str();
+	if (name == sema->target.func) {
+		auto shift_info = sema->stencil_info.call_info.find(expr)->second;
+		return shiftInfoEnv[shift_info];
+	}
+	else if (eqValue.find(expr->getSourceText()) != eqValue.end()) {
+		return eqValue[expr->getSourceText()];
+	}
+
+	llvm::SmallVector<mlir::Value, 8> operands;
+
+	for (auto &arg : expr->getArgs()) {
+		auto vOr = genExpr(arg.get());
+		if (mlir::failed(vOr)) {
+			return mlir::failure();
+		}
+
+		operands.push_back(*vOr);
+	}
+
+	auto calleeName  = expr->getCallee().str();
+	auto calleeAttr  = mlir::FlatSymbolRefAttr::get(&context, calleeName);
+	mlir::Value callOp = comp::CallOp::create(builder, loc, f64Ty, calleeAttr, operands).getResult();
+
+	return callOp;
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genParenExpr(const ParenExprAST* expr) {

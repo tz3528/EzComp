@@ -431,27 +431,30 @@ void Semantic::adjestEquationOrder(EquationGroups& eg, TargetFunctionMeta& targe
 
 	// 首先收集所有方程的左侧定义
 	llvm::StringMap<const EquationAST*> definite;
-	for (auto& eq : eg.iter) {
+	for (auto eq : eg.iter) {
 		EqNode node;
 		node.eq = eq;
 		G.addNode(node);
 
 		auto lhs = eq->getLHS();
+
+		if (definite.find(lhs->getSourceText()) != definite.end()) {
+			emitError(eq->getBeginLoc(), "The expression on the left side of the equation cannot be repeated");
+		}
+
 		if (auto call = llvm::dyn_cast<CallExprAST>(lhs)) {
 			if (call->getCallee().str() != target.func) {
-				definite[call->getCallee().str()] = eq;
+				definite[call->getSourceText()] = eq;
 			}
 		}
 	}
 
 	// 枚举所有方程，找到每个方程对应的依赖方程
 	for (auto& eq : eg.iter) {
-		walkExpr(eq->getRHS(), [&](const ExprAST* lhs) {
-			if (auto call = llvm::dyn_cast<CallExprAST>(lhs)) {
-				auto name = call->getCallee().str();
-				if (definite.contains(name)) {
-					G.addEdge(definite[name], eq);
-				}
+		walkExpr(eq->getRHS(), [&](const ExprAST* expr) {
+			auto name = expr->getSourceText();
+			if (definite.contains(name)) {
+				G.addEdge(definite[name], eq);
 			}
 			return true;
 		});
@@ -466,6 +469,8 @@ void Semantic::adjestEquationOrder(EquationGroups& eg, TargetFunctionMeta& targe
 	for (size_t i = 0; i < result->size(); i++) {
 		eg.iter[i] = result->at(i);
 	}
+
+	outputDotGraph(G, "Dependency Graph");
 }
 
 bool Semantic::getInteger(ExprAST* expr, int64_t& result) {

@@ -54,7 +54,7 @@ struct EqGraph {
 	mlir::FailureOr<std::vector<const EquationAST*>> getTopoOrder();
 };
 
-void outputDotGraph(const EqGraph &G);
+void outputDotGraph(const EqGraph &G,std::string DotPath);
 
 }
 

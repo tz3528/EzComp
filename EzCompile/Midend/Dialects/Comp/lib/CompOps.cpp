@@ -30,5 +30,6 @@ mlir::LogicalResult ForTimeOp::verify() { return mlir::success(); }
 mlir::LogicalResult SampleOp::verify() { return mlir::success(); }
 mlir::LogicalResult UpdateOp::verify() { return mlir::success(); }
 mlir::LogicalResult CoordOp::verify() { return mlir::success(); }
+mlir::LogicalResult CallOp::verify() { return mlir::success(); }
 
 }

@@ -268,3 +268,18 @@ def EnforceBoundaryOp : Comp_Op<"enforce_boundary"> {
 
     let hasVerifier = 1; // boundaries 必须是 !comp.boundary；并且时间层与 writeTime 对齐。
 }
+
+// comp.call @call(%a, %b) : (t1, t2) -> f64
+
+def Comp_CallOp : Comp_Op<"call", [Pure]> {
+    let summary = "Record a scalar function-style call; lowered away later";
+    let arguments = (ins
+        FlatSymbolRefAttr:$callee,
+        Variadic<AnyType>:$args
+    );
+    let results = (outs F64:$result);
+
+
+    let assemblyFormat = "$callee `(` $args `)` attr-dict `:` functional-type($args, $result)";
+    let hasVerifier = 1;
+}
