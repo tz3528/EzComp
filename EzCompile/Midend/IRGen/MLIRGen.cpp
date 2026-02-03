@@ -13,7 +13,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 
-#include "IRGen/include/MLIRGen.h"
+#include "MLIRGen.h"
 
 #include <thread>
 
