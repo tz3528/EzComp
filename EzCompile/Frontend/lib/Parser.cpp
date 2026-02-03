@@ -28,10 +28,12 @@ using llvm::StringRef;
 Parser::Parser(Lexer &lexer, llvm::SourceMgr &sourceMgr, int bufferID, mlir::MLIRContext *ctx)
     : lexer(lexer),
       DiagnosticBase(sourceMgr,bufferID,ctx){
+    prevTok = Token(Token::eof, llvm::SMLoc(), llvm::StringRef());
     advance();
 }
 
 void Parser::advance() {
+    prevTok = curTok;
     curTok = lexer.lex();
 }
 
@@ -253,10 +255,10 @@ int Parser::getTokPrecedence() const {
     switch (curTok.getKind()) {
     case Token::plus:
     case Token::minus:
-        return 10;
+        return 20;
     case Token::star:
     case Token::slash:
-        return 20;
+        return 40;
     default:
         return -1;
     }
@@ -270,6 +272,12 @@ std::unique_ptr<ExprAST> Parser::parseExpr(int minPrec) {
 
 std::unique_ptr<ExprAST> Parser::parseUnary() {
     if (curTok.is(Token::plus) || curTok.is(Token::minus)) {
+        // 检查前一个token是否也是运算符，防止连续运算符如 ++5, --5, +-5
+        if (prevTok.is(Token::plus) || prevTok.is(Token::minus)) {
+            emitError(curTok.getLoc(), "consecutive operators are not allowed");
+            return nullptr;
+        }
+
         Token opTok = curTok;
         char op = opTok.getSpelling().front();
         llvm::SMLoc begin = opTok.getLoc();
@@ -371,6 +379,10 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
                     }
                     break;
                 }
+            } else {
+                // 空函数调用，不允许
+                emitError(curTok.getLoc(), "function calls must have at least one argument");
+                return nullptr;
             }
 
             Token rTok = curTok;
@@ -406,6 +418,11 @@ std::unique_ptr<ExprAST> Parser::parseSignedNumberLiteral(llvm::StringRef what) 
     char sign = 0;
 
     if (curTok.is(Token::plus) || curTok.is(Token::minus)) {
+        // 检查前一个token是否也是运算符，防止连续运算符如 ++5, --5, +-5
+        if (prevTok.is(Token::plus) || prevTok.is(Token::minus)) {
+            emitError(curTok.getLoc(), "consecutive operators are not allowed");
+            return nullptr;
+        }
         sign = curTok.getSpelling().front();
         advance();
     }
