@@ -30,7 +30,7 @@ struct PipelineOptions
 	Option<bool> enableCanonicalize{
 		*this, "comp-base",
 		llvm::cl::desc("Run canonicalize passes between lowering stages"),
-		llvm::cl::init(true)};
+		llvm::cl::init(false)};
 
 };
 
@@ -38,7 +38,9 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt);
 
 void registerPipelines();
 
-std::unique_ptr<mlir::Pass> createLowerCompPointsToArithPass();
+std::unique_ptr<mlir::Pass> createLowerCompDimPass();
+std::unique_ptr<mlir::Pass> createLowerCompFieldPass();
+std::unique_ptr<mlir::Pass> createLowerCompPointsPass();
 
 }
 

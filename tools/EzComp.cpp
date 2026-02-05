@@ -17,6 +17,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
@@ -51,6 +52,9 @@ static cl::opt<enum Action> emitAction(
     "emit", cl::desc("Select the kind of output desired"),
     cl::values(clEnumValN(DumpAST, "ast", "output the AST dump")),
     cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")));
+
+static mlir::PassPipelineCLParser passPipeline("",
+    "Run an MLIR pass pipeline (use --pass-pipeline=...)");
 
 /// Returns a Toy AST resulting from parsing the file or a nullptr on error.
 static std::unique_ptr<ParsedModule> parseInputFile(llvm::StringRef filename) {
@@ -117,6 +121,7 @@ static int dumpMLIR() {
 
     context.getOrLoadDialect<comp::CompDialect>();
     context.getOrLoadDialect<mlir::arith::ArithDialect>();
+    context.getOrLoadDialect<mlir::memref::MemRefDialect>();
 
     MLIRGen gen(*parse_module, context);
     auto mo = gen.mlirGen();
@@ -125,13 +130,15 @@ static int dumpMLIR() {
         return 2;
     }
 
-    mlir::PassManager pm(&context);
-    PipelineOptions po;
-    buildPipeline(pm, po);
+    if (passPipeline.hasAnyOccurrences()) {
+        mlir::PassManager pm(&context);
+        PipelineOptions po;
+        buildPipeline(pm, po);
 
-    if (mlir::failed(pm.run(*mo))) {
-        llvm::errs() << "Pipeline failed\n";
-        return 3;
+        if (mlir::failed(pm.run(*mo))) {
+            llvm::errs() << "Pipeline failed\n";
+            return 3;
+        }
     }
 
     gen.print(llvm::outs());

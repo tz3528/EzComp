@@ -1,4 +1,4 @@
-//===-- LowerCompPointsToArith.cpp -----------------------------*- C++ -*-===//
+//===-- LowerCompPoints.cpp -------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -56,9 +56,9 @@ private:
 	mlir::SymbolTableCollection& symbolTable;
 };
 
-struct LowerCompPointsToArithPass
-	: mlir::PassWrapper<LowerCompPointsToArithPass, mlir::OperationPass<mlir::ModuleOp>> {
-	MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerCompPointsToArithPass)
+struct LowerCompPointsPass
+	: mlir::PassWrapper<LowerCompPointsPass, mlir::OperationPass<mlir::ModuleOp>> {
+	MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerCompPointsPass)
 
 	void getDependentDialects(mlir::DialectRegistry& registry) const override {
 		registry.insert<mlir::arith::ArithDialect, comp::CompDialect>();
@@ -74,7 +74,6 @@ struct LowerCompPointsToArithPass
 		mlir::MLIRContext* ctx = &getContext();
 		mlir::ModuleOp module = getOperation();
 
-		// 你的项目如果已有统一的 TypeConverter，可以复用；这里只有 index，不需要改类型
 		mlir::TypeConverter typeConverter;
 		typeConverter.addConversion([](mlir::Type t) { return t; });
 
@@ -85,24 +84,25 @@ struct LowerCompPointsToArithPass
 
 		mlir::ConversionTarget target(*ctx);
 		target.addLegalDialect<mlir::arith::ArithDialect>();
-		// 其他方言/Op 的合法性按你现有 pipeline 来；这里最关键是把 comp.points 标为 illegal
+
+		// 把points标记为非法，即此时所有的points应当都已被降级
 		target.addIllegalOp<comp::PointsOp>();
 
-		// 如果你的 pipeline 里还有其他 dialect 需要继续合法，按需加：
 		// target.addLegalDialect<func::FuncDialect, scf::SCFDialect, memref::MemRefDialect, ...>();
 		target.markUnknownOpDynamicallyLegal([](mlir::Operation*) { return true; });
 
-		if (failed(applyPartialConversion(module, target, std::move(patterns))))
+		if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
 			signalPassFailure();
+		}
 	}
 };
 
-void registerLowerCompPointsToArithPass() {
-	mlir::PassRegistration<LowerCompPointsToArithPass>();
+void registerLowerCompPointsPass() {
+	mlir::PassRegistration<LowerCompPointsPass>();
 }
 
-std::unique_ptr<mlir::Pass> createLowerCompPointsToArithPass() {
-	return std::make_unique<LowerCompPointsToArithPass>();
+std::unique_ptr<mlir::Pass> createLowerCompPointsPass() {
+	return std::make_unique<LowerCompPointsPass>();
 }
 
 }

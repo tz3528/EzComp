@@ -27,6 +27,8 @@ target_link_libraries(ezcomp PRIVATE
         MLIRSupport
         MLIRPass
         MLIRTransforms
+        MLIRArithDialect
+        MLIRMemRefDialect
 )
 
 # 4. 设置 RPATH (确保运行时能找到动态库)

@@ -16,14 +16,11 @@
 namespace ezcompile {
 
 void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
-	// 1.将所有应当是常量属性的降级，分别有dim、coord和points
-	pm.addPass(createLowerCompPointsToArithPass());
 
-	// 2.实例化所有的alloc、store、load
+	pm.addPass(createLowerCompDimPass());
+	pm.addPass(createLowerCompPointsPass());
+	pm.addPass(createLowerCompFieldPass());
 
-	// 3.消解循环
-
-	// 4.将所有的affine、memref和arith降级为llvm方言
 }
 
 void registerPipelines() {
@@ -31,6 +28,6 @@ void registerPipelines() {
 		"lowering",
 		"Lower MyProject dialect via staged lowering with configurable options",
 		buildPipeline);
-}// set arg ../Examples/EcCompile/Midend/basic/2d_heat_equation.comp  -emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true})"
+}// set arg ../Examples/EcCompile/Midend/basic/2d_heat_equation.comp  -emit=mlir --pass-pipeline="lowering{comp-base=true}"
 
 }

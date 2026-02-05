@@ -18,10 +18,14 @@
 
 namespace ezcompile {
 
-void registerLowerCompPointsToArithPass();
+void registerLowerCompDimPass();
+void registerLowerCompFieldPass();
+void registerLowerCompPointsPass();
 
-void registerPasses() {
-	registerLowerCompPointsToArithPass();
+inline void registerPasses() {
+	registerLowerCompDimPass();
+	registerLowerCompFieldPass();
+	registerLowerCompPointsPass();
 }
 
 }
