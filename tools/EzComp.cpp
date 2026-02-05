@@ -16,16 +16,20 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 #include "EzCompile/Frontend/include/Parser.h"
 #include "EzCompile/Frontend/include/AST.h"
 #include "EzCompile/Frontend/include/Semantic/Semantic.h"
-#include "EzCompile/Midend/IRGen/include/MLIRGen.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "IRGen/MLIRGen.h"
+#include "Transforms/Pipelines.h"
+#include "Transforms/Passes.h"
 
 namespace cl = llvm::cl;
+using namespace ezcompile;
 
 static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::desc("<input toy file>"),
@@ -49,8 +53,11 @@ static cl::opt<enum Action> emitAction(
     cl::values(clEnumValN(DumpAST, "ast", "output the AST dump")),
     cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")));
 
+static mlir::PassPipelineCLParser passPipeline("",
+    "Run an MLIR pass pipeline (use --pass-pipeline=...)");
+
 /// Returns a Toy AST resulting from parsing the file or a nullptr on error.
-static std::unique_ptr<ezcompile::ParsedModule> parseInputFile(llvm::StringRef filename) {
+static std::unique_ptr<ParsedModule> parseInputFile(llvm::StringRef filename) {
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
         llvm::MemoryBuffer::getFileOrSTDIN(filename);
     if (std::error_code ec = fileOrErr.getError()) {
@@ -58,7 +65,7 @@ static std::unique_ptr<ezcompile::ParsedModule> parseInputFile(llvm::StringRef f
         return nullptr;
     }
 
-    auto out = std::make_unique<ezcompile::ParsedModule>();
+    auto out = std::make_unique<ParsedModule>();
 
     out->bufferID = static_cast<int>(
         out->sourceMgr.AddNewSourceBuffer(std::move(*fileOrErr), llvm::SMLoc())
@@ -66,15 +73,15 @@ static std::unique_ptr<ezcompile::ParsedModule> parseInputFile(llvm::StringRef f
 
     auto ctx = mlir::MLIRContext();
 
-    ezcompile::Lexer lexer(out->sourceMgr, out->bufferID, &ctx);
-    ezcompile::Parser parser(lexer, out->sourceMgr, out->bufferID, &ctx);
+    Lexer lexer(out->sourceMgr, out->bufferID, &ctx);
+    Parser parser(lexer, out->sourceMgr, out->bufferID, &ctx);
 
     out->module = parser.parseModule();
     if (!out->module) return nullptr;
 
     if (parser.hadError()) return nullptr;
 
-    ezcompile::Semantic semantic(out->sourceMgr,out->bufferID,&ctx);
+    Semantic semantic(out->sourceMgr,out->bufferID,&ctx);
 
     out->sema = semantic.analyze(*out->module);
 
@@ -95,7 +102,7 @@ static int dumpAST() {
     if (!moduleAST)
         return 1;
 
-    ezcompile::dump(*moduleAST->module);
+    dump(*moduleAST->module);
     return 0;
 }
 
@@ -109,17 +116,29 @@ static int dumpMLIR() {
     if (!moduleAST)
         return 1;
 
-    auto pm = moduleAST.get();
+    auto parse_module = moduleAST.get();
     mlir::MLIRContext context;
 
-    context.getOrLoadDialect<ezcompile::comp::CompDialect>();
+    context.getOrLoadDialect<comp::CompDialect>();
     context.getOrLoadDialect<mlir::arith::ArithDialect>();
+    context.getOrLoadDialect<mlir::memref::MemRefDialect>();
 
-    ezcompile::MLIRGen gen(*pm, context);
+    MLIRGen gen(*parse_module, context);
     auto mo = gen.mlirGen();
 
     if (mlir::failed(mo)) {
         return 2;
+    }
+
+    if (passPipeline.hasAnyOccurrences()) {
+        mlir::PassManager pm(&context);
+        PipelineOptions po;
+        buildPipeline(pm, po);
+
+        if (mlir::failed(pm.run(*mo))) {
+            llvm::errs() << "Pipeline failed\n";
+            return 3;
+        }
     }
 
     gen.print(llvm::outs());
