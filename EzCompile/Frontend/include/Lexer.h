@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// 词法分析器：将 comp 源代码分解为 Token 序列
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,15 +24,10 @@ class MLIRContext;
 
 namespace ezcompile {
 
-/// Token 只做“切片”：
-/// - kind：类别（标识符/数字/符号/结构关键字等）
-/// - loc：起始位置（SMLoc 指向 buffer 内某个字符）
-/// - spelling：源码中的原始文本切片（StringRef 指向同一份 buffer）
+/// 词法单元，表示源代码中的一个最小语义单位
 ///
-/// 设计要点：
-/// 1) 不分配内存、不拷贝字符串：spelling 直接引用 SourceMgr 的 buffer，
-///    这符合 LLVM/MLIR 的“轻量前端”风格。
-/// 2) 词法层不做语义判断：比如一元负号、diff 是否内建函数，都交给 parser/语义层。
+/// Token 采用"切片"设计：不分配内存、不拷贝字符串，直接引用 SourceMgr 的 buffer。
+/// 词法层不做语义判断，语义由后续的 Parser 和语义分析处理。
 class Token {
 public:
     enum Kind : uint8_t {
@@ -72,7 +67,6 @@ public:
     Kind getKind() const { return kind; }
     llvm::SMLoc getLoc() const { return loc; }
     llvm::StringRef getSpelling() const { return spelling; }
-
     bool is(Kind k) const { return kind == k; }
     bool isNot(Kind k) const { return kind != k; }
 
@@ -82,41 +76,29 @@ private:
     llvm::StringRef spelling;
 };
 
+/// 词法分析器：将源代码分解为 Token 序列
 class Lexer {
 public:
-    /// bufferID 是 SourceMgr 中 MemoryBuffer 的 index（通常 0）。
-    /// context 可为空：为空则退化为 SourceMgr 自带报错；不为空则走 MLIR 诊断系统。
     Lexer(llvm::SourceMgr &sourceMgr,
           int bufferID,
           mlir::MLIRContext *context);
 
-    /// 读取下一个 token。
     Token lex();
-
     bool hadError() const { return sawError; }
 
 private:
-    /// 跳过空白与注释。
-    /// 注释语法（comp 源码）：
-    /// - # line comment  （从 # 到行尾）
-    ///
-    /// 说明：
-    /// 1) 词法层只负责跳过注释，不产出注释 token。
-    /// 2) 这样保持 lexer 无状态、无上下文，便于后续 parser/IRGen 统一处理。
+    /// 跳过空白字符与注释（# line comment）
     void skipWhitespaceAndComments();
 
-    /// 识别 identifier 或结构关键字（declarations/equations/options）。
-    /// 注意：diff/sin/exp/log 等一律作为 identifier，
-    /// 后续由 parser 看到 "identifier '(' ... ')'" 来形成 CallExpr。
+    /// 识别标识符或结构关键字（declarations/equations/options）
     Token lexIdentifierOrKeyword();
 
-    /// 识别 number（不吃前导 +/-，避免把 “-6” 粘成一个 token，保持无上下文）。
+    /// 识别数字字面量：123, 3.14, .5, 1e-6（不处理前导 +/-）
     Token lexNumber();
 
+    /// 识别字符串字面量（支持转义字符如 \"）
     Token lexStringLiteral();
 
-    /// diagnostics：尽量走 MLIR 的 emitError（带 FileLineColLoc），
-    /// 这样后续 parser/IRGen 也能复用同一套报错风格。
     void emitError(llvm::SMLoc loc, llvm::StringRef message);
 
 private:

@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// 语法分析器实现：将 Token 序列解析为抽象语法树（AST）
 //
 //
 //===----------------------------------------------------------------------===//
@@ -22,7 +23,7 @@ using llvm::StringRef;
 
 
 //===----------------------------------------------------------------------===//
-// Parser
+// Parser - 构造函数和基础方法
 //===----------------------------------------------------------------------===//
 
 Parser::Parser(Lexer &lexer, llvm::SourceMgr &sourceMgr, int bufferID, mlir::MLIRContext *ctx)
@@ -57,6 +58,7 @@ bool Parser::consume(Token::Kind k, StringRef msg) {
 }
 
 void Parser::syncToSectionOrEOF() {
+    // 跳过直到遇到下一个 section 关键字或 EOF
     while (!curTok.is(Token::eof)) {
         if (curTok.is(Token::kw_declarations) ||
             curTok.is(Token::kw_equations) ||
@@ -68,6 +70,7 @@ void Parser::syncToSectionOrEOF() {
 }
 
 void Parser::syncToItemEnd() {
+    // 跳过直到遇到分号、右花括号或 EOF
     while (!curTok.is(Token::eof) &&
            !curTok.is(Token::semicolon) &&
            !curTok.is(Token::r_brace)) {
@@ -102,7 +105,7 @@ std::unique_ptr<ModuleAST> Parser::parseModule() {
 }
 
 //===----------------------------------------------------------------------===//
-// Sections
+// Sections - Section 解析方法
 //===----------------------------------------------------------------------===//
 
 bool Parser::parseDeclarationsSection(ModuleAST &mod) {
@@ -145,10 +148,11 @@ bool Parser::parseOptionsSection(ModuleAST &mod) {
 }
 
 //===----------------------------------------------------------------------===//
-// Items
+// Items - 项解析方法
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<VarDeclAST> Parser::parseVarDeclItem() {
+    // 语法格式：var_name[min, max, num]
     if (!curTok.is(Token::identifier)) {
         emitError(curTok.getLoc(), "expected identifier in declaration");
         return nullptr;
@@ -159,7 +163,6 @@ std::unique_ptr<VarDeclAST> Parser::parseVarDeclItem() {
     llvm::SMLoc begin = nameTok.getLoc();
     advance();
 
-    // 新语法：必须有 [min,max,num]
     if (!consume(Token::l_square, "expected '[' after variable name (use var[min,max,num])"))
         return nullptr;
 
@@ -173,7 +176,6 @@ std::unique_ptr<VarDeclAST> Parser::parseVarDeclItem() {
 
     if (!consume(Token::comma, "expected ',' after max")) return nullptr;
 
-    // num：建议限制为无符号整数（等分点个数）
     Token numTok = curTok;
     if (!curTok.is(Token::number)) {
         emitError(curTok.getLoc(), "expected integer literal for num");
@@ -183,16 +185,15 @@ std::unique_ptr<VarDeclAST> Parser::parseVarDeclItem() {
 
     if (!consume(Token::r_square, "expected ']' after num")) return nullptr;
 
-    // 如果你明确“声明不再允许 initializer”，这里直接报错更清晰
+    // 不再支持初始化器
     if (curTok.is(Token::equal)) {
         emitError(curTok.getLoc(), "declaration initializer is not supported; use var[min,max,num] only");
-        // 你也可以选择：advance(); parseExpr(); 然后丢弃/或保存到 AST
     }
 
     Token semiTok = curTok;
     if (!consume(Token::semicolon, "expected ';' after declaration")) return nullptr;
 
-    // num 的整数校验（必须通过才能继续）
+    // num 必须是正整数
     long long num = 0;
     if (!llvm::to_integer(numTok.getSpelling(), num) || num <= 0) {
         emitError(numTok.getLoc(), "num must be a positive integer");
@@ -248,10 +249,11 @@ std::unique_ptr<OptionAST> Parser::parseOptionItem() {
 }
 
 //===----------------------------------------------------------------------===//
-// Expr (precedence climbing)
+// Expr - 表达式解析（优先级爬升算法）
 //===----------------------------------------------------------------------===//
 
 int Parser::getTokPrecedence() const {
+    // 运算符优先级：乘除(40) > 加减(20)
     switch (curTok.getKind()) {
     case Token::plus:
     case Token::minus:
@@ -272,7 +274,7 @@ std::unique_ptr<ExprAST> Parser::parseExpr(int minPrec) {
 
 std::unique_ptr<ExprAST> Parser::parseUnary() {
     if (curTok.is(Token::plus) || curTok.is(Token::minus)) {
-        // 检查前一个token是否也是运算符，防止连续运算符如 ++5, --5, +-5
+        // 防止连续运算符如 ++5, --5, +-5
         if (prevTok.is(Token::plus) || prevTok.is(Token::minus)) {
             emitError(curTok.getLoc(), "consecutive operators are not allowed");
             return nullptr;
@@ -295,29 +297,29 @@ std::unique_ptr<ExprAST> Parser::parseUnary() {
 
 std::unique_ptr<ExprAST> Parser::parseBinOpRHS(int minPrec,
                                                std::unique_ptr<ExprAST> lhs) {
+    // 优先级爬升算法：如果当前运算符优先级低于 minPrec，则返回
+    // 否则递归解析右侧表达式
     while (true) {
         int prec = getTokPrecedence();
-        if (prec < minPrec) return lhs; // 如果当前运算符的优先级低于最小优先级，直接返回 lhs
+        if (prec < minPrec) return lhs;
 
         Token opTok = curTok;
         char op = opTok.getSpelling().empty() ? '?' : opTok.getSpelling().front();
-        advance();  // 移动到下一个 token
+        advance();
 
-        auto rhs = parseUnary(); // 解析 rhs 部分
+        auto rhs = parseUnary();
         if (!rhs) return nullptr;
 
-        int nextPrec = getTokPrecedence(); // 获取 rhs 后一个运算符的优先级
+        int nextPrec = getTokPrecedence();
+        // 如果当前运算符优先级小于下一个运算符，先结合 rhs 和后续运算符
         if (prec < nextPrec) {
-            // 如果当前运算符的优先级小于下一个运算符的优先级，递归解析 rhs 后续的运算符
             rhs = parseBinOpRHS(prec + 1, std::move(rhs));
             if (!rhs) return nullptr;
         }
 
-        // 计算当前运算符的开始和结束位置
         auto beginLoc = lhs->getBeginLoc();
         auto endLoc   = rhs->getEndLoc();
 
-        // 构造并返回新的二元运算 AST 节点
         lhs = std::make_unique<BinaryExprAST>(
             op, std::move(lhs), std::move(rhs),
             SourceRange(beginLoc, endLoc));
@@ -325,9 +327,11 @@ std::unique_ptr<ExprAST> Parser::parseBinOpRHS(int minPrec,
 }
 
 std::unique_ptr<ExprAST> Parser::parsePrimary() {
+    // 数字字面量
     if (curTok.is(Token::number)) {
         Token t = curTok;
         advance();
+
         const StringRef s = t.getSpelling();
         const bool isFloat =
             (s.find('.') != std::string::npos) ||
@@ -345,6 +349,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
         }
     }
 
+    // 字符串字面量
     if (curTok.is(Token::string)) {
         Token t = curTok;
         advance();
@@ -358,6 +363,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
             sp, SourceRange(t.getLoc(), tokenEndLoc(t)));
     }
 
+    // 标识符（变量引用或函数调用）
     if (curTok.is(Token::identifier)) {
         Token idTok = curTok;
         StringRef name = idTok.getSpelling();
@@ -380,7 +386,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
                     break;
                 }
             } else {
-                // 空函数调用，不允许
+                // 不允许空函数调用
                 emitError(curTok.getLoc(), "function calls must have at least one argument");
                 return nullptr;
             }
@@ -397,6 +403,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary() {
             name, SourceRange(begin, tokenEndLoc(idTok)));
     }
 
+    // 括号表达式
     if (curTok.is(Token::l_paren)) {
         Token lTok = curTok;
         advance();
@@ -418,7 +425,6 @@ std::unique_ptr<ExprAST> Parser::parseSignedNumberLiteral(llvm::StringRef what) 
     char sign = 0;
 
     if (curTok.is(Token::plus) || curTok.is(Token::minus)) {
-        // 检查前一个token是否也是运算符，防止连续运算符如 ++5, --5, +-5
         if (prevTok.is(Token::plus) || prevTok.is(Token::minus)) {
             emitError(curTok.getLoc(), "consecutive operators are not allowed");
             return nullptr;
@@ -459,18 +465,17 @@ std::unique_ptr<ExprAST> Parser::parseSignedNumberLiteral(llvm::StringRef what) 
 }
 
 //===----------------------------------------------------------------------===//
-// options: literal-only + validation
+// Options - 选项字面量解析
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<ExprAST> Parser::parseOptionLiteral() {
-    // number literal (允许前导 +/-，但整体仍视为“数字字面量”)
+    // options 的 value 只允许数字字面量或字符串字面量
     if (curTok.is(Token::plus) || curTok.is(Token::minus) || curTok.is(Token::number)) {
         return parseSignedNumberLiteral("option");
     }
 
-    // string literal
     if (curTok.is(Token::string)) {
-        return parsePrimary(); // primary 已经做了 strip + intern
+        return parsePrimary();
     }
 
     emitError(curTok.getLoc(), "options only allow numeric/string literals");
