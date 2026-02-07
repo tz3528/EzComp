@@ -128,17 +128,18 @@ mlir::FailureOr<comp::ProblemOp> MLIRGen::genProblem() {
 mlir::LogicalResult MLIRGen::genDim() {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
-	for (const auto &id : sema->target.spaceDims) {
-		auto sym = sema->st.get(id);
+	{
+		auto sym = sema->st.get(sema->target.timeDim);
 		auto nameAttr = builder.getStringAttr(sym.name);
 		auto lowerAttr = builder.getF64FloatAttr(static_cast<double>(sym.domain.lower));
 		auto upperAttr = builder.getF64FloatAttr(static_cast<double>(sym.domain.upper));
 		auto pointsAttr = builder.getI64IntegerAttr(static_cast<int64_t>(sym.domain.points));
-		comp::DimOp::create(builder, loc, nameAttr, lowerAttr, upperAttr, pointsAttr);
+		auto timeVarAttr = builder.getUnitAttr();
+		comp::DimOp::create(builder, loc, nameAttr, lowerAttr, upperAttr, pointsAttr, timeVarAttr);
 	}
 
-	{
-		auto sym = sema->st.get(sema->target.timeDim);
+	for (const auto &id : sema->target.spaceDims) {
+		auto sym = sema->st.get(id);
 		auto nameAttr = builder.getStringAttr(sym.name);
 		auto lowerAttr = builder.getF64FloatAttr(static_cast<double>(sym.domain.lower));
 		auto upperAttr = builder.getF64FloatAttr(static_cast<double>(sym.domain.upper));
