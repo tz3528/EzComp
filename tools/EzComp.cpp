@@ -16,6 +16,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/AsmState.h"
@@ -122,6 +123,7 @@ static int dumpMLIR() {
     context.getOrLoadDialect<comp::CompDialect>();
     context.getOrLoadDialect<mlir::arith::ArithDialect>();
     context.getOrLoadDialect<mlir::memref::MemRefDialect>();
+    context.getOrLoadDialect<mlir::affine::AffineDialect>();
 
     MLIRGen gen(*parse_module, context);
     auto mo = gen.mlirGen();
@@ -137,6 +139,7 @@ static int dumpMLIR() {
 
         if (mlir::failed(pm.run(*mo))) {
             llvm::errs() << "Pipeline failed\n";
+            mo->print(llvm::errs());
             return 3;
         }
     }

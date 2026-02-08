@@ -27,6 +27,8 @@ target_link_libraries(ezcomp PRIVATE
         MLIRSupport
         MLIRPass
         MLIRTransforms
+
+        MLIRAffineDialect
         MLIRArithDialect
         MLIRMemRefDialect
 )

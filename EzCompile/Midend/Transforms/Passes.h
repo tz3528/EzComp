@@ -21,11 +21,13 @@ namespace ezcompile {
 void registerLowerCompDimPass();
 void registerLowerCompFieldPass();
 void registerLowerCompPointsPass();
+void registerLowerCompApplyInitPass();
 
 inline void registerPasses() {
 	registerLowerCompDimPass();
 	registerLowerCompFieldPass();
 	registerLowerCompPointsPass();
+	registerLowerCompApplyInitPass();
 }
 
 }
