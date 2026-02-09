@@ -168,12 +168,10 @@ def DirichletOp : Comp_Op<"dirichlet"> {
         ArrayAttr:$anchors
     );
 
-    let results = (outs Comp_BoundaryType:$result);
-
     // 产生 RHS 的 region；必须以 `comp.yield <scalar>` 结束。
     let regions = (region SizedRegion<1>:$rhs);
 
-    let assemblyFormat = "$field `anchors` `=` $anchors $rhs attr-dict `:` functional-type($field, $result)";
+    let assemblyFormat = "$field `anchors` `=` $anchors $rhs attr-dict `:` type($field)";
 
     let hasVerifier = 1; // rhs 必须 `comp.yield` 且恰好产出 1 个值。
 }
@@ -249,22 +247,6 @@ def SampleOp : Comp_Op<"sample", [Pure]> {
     let assemblyFormat = "$field `(` $indices `)` `dims` `=` $dims `shift` `=` $shift attr-dict `:` functional-type(operands, results)";
 
     let hasVerifier = 1; // 尺寸约束：indices == dims == shift。
-}
-
-// comp.enforce_boundary %u using (%b0, %b1, ...) atTime=%np1
-
-def EnforceBoundaryOp : Comp_Op<"enforce_boundary"> {
-    let summary = "Apply boundary handles to a field at a given time layer.";
-
-    let arguments = (ins
-        Comp_FieldType:$field,
-        Variadic<Comp_BoundaryType>:$boundaries,
-        Index:$atTime
-    );
-
-    let assemblyFormat = "$field `using` `(` $boundaries `)` `atTime` `=` $atTime attr-dict `:` type($field)";
-
-    let hasVerifier = 1; // boundaries 必须是 !comp.boundary；并且时间层与 writeTime 对齐。
 }
 
 // comp.call @call(%a, %b) : (t1, t2) -> f64

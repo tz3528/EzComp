@@ -72,7 +72,6 @@ private:
 	mlir::LogicalResult genForTime(mlir::Value field, mlir::Value timePoints);
 	mlir::LogicalResult genUpdate(mlir::Value field, TimeLoopCtx tctx);
 	mlir::LogicalResult genSample(mlir::Value field);
-	mlir::LogicalResult genEnforceBoundary(mlir::Value field, mlir::Value atTime);
 
 	//===--------------------------------------------------------------------===//
 	// Region helper：终结符
@@ -127,8 +126,6 @@ private:
 
 	llvm::DenseMap<SymbolId, mlir::Value> dimIndexEnv;	// dim -> index value
 	llvm::DenseMap<SymbolId, mlir::Value> dimCoordEnv;	// dim -> f64 coord value
-
-	llvm::SmallVector<mlir::Value, 4> boundaryHandles;	// 存储所以边界方程的句柄或属性
 
 	std::map<ShiftInfo, mlir::Value> shiftInfoEnv;	// 每个偏移量都对应一个句柄
 
