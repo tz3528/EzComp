@@ -6,7 +6,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// 方程依赖图接口
+// 该文件定义了方程之间的依赖关系图，用于：
+// - 构建方程依赖关系有向图
+// - 拓扑排序确定方程计算顺序
+// - 支持图可视化输出
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,20 +26,21 @@
 
 #include "mlir/IR/Verifier.h"
 
-
 #include "AST.h"
 
 namespace ezcompile {
 
+/// 方程图节点，表示一个方程及其依赖关系
 struct EqNode {
-	const EquationAST* eq;					// 方程指针
-	llvm::SmallVector<EqNode*, 4> succ; 	// 出边：依赖当前节点的方程
-	unsigned indegree = 0;					// 入度：多少方程依赖当前方程
+	const EquationAST* eq;                    // 方程指针
+	llvm::SmallVector<EqNode*, 4> succ;       // 出边：依赖当前节点的方程
+	unsigned indegree = 0;                    // 入度：多少方程依赖当前方程
 };
 
+/// 方程依赖图，用于拓扑排序
 struct EqGraph {
 	llvm::SmallVector<EqNode, 32> nodes;
-	llvm::DenseMap<const EquationAST*, unsigned> idx; // 方程指针 -> 节点下标
+	llvm::DenseMap<const EquationAST*, unsigned> idx; // 方程指针到节点索引的映射
 
 	void addNode(const EqNode node) {
 		idx.insert({node.eq, nodes.size()});
@@ -50,15 +55,16 @@ struct EqGraph {
 		nodes[useIdx].indegree++;
 	}
 
-	// 获取所有入度为0的点
+	/// 获取拓扑排序结果
 	mlir::FailureOr<std::vector<const EquationAST*>> getTopoOrder();
 };
 
-void outputDotGraph(const EqGraph &G,std::string DotPath);
+/// 输出依赖图到DOT文件（用于可视化）
+void outputDotGraph(const EqGraph &G, std::string DotPath);
 
 }
 
-// 适配 EqGraph 结构，确保它可以用 GraphWriter 进行遍历
+/// 适配EqGraph结构，使其支持LLVM GraphWriter遍历
 template <>
 struct llvm::GraphTraits<ezcompile::EqGraph*> {
 	using GraphType = ezcompile::EqGraph*;
@@ -86,6 +92,7 @@ struct llvm::GraphTraits<ezcompile::EqGraph*> {
 	}
 };
 
+/// const版本特化
 template <>
 struct llvm::GraphTraits<const ezcompile::EqGraph*> {
 	using GraphType = const ezcompile::EqGraph*;
@@ -112,7 +119,6 @@ struct llvm::GraphTraits<const ezcompile::EqGraph*> {
 		return llvm::map_iterator(G->nodes.end(), &nodePtr);
 	}
 };
-
 
 
 #endif //EZ_COMPILE_DEPENDENCY_GRAPH_H

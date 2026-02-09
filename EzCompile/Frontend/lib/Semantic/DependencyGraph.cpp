@@ -6,14 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// 方程依赖图实现
+// 该文件实现了方程依赖图的拓扑排序算法和图可视化功能
 //
 //===----------------------------------------------------------------------===//
 
 
-#include "Semantic/DependencyGraph.h"
-
 #include <queue>
+
+#include "Semantic/DependencyGraph.h"
 
 namespace ezcompile {
 
@@ -56,11 +57,10 @@ void outputDotGraph(const EqGraph &G,std::string DotPath) {
 		return;
 	}
 
-	// 保持你原来的调用方式（参数签名不变）
+	// 输出DOT格式
 	llvm::WriteGraph(OS, &G, "dependency_graph", "Dependency Graph");
 	OS.flush();
 }
-
 
 }
 

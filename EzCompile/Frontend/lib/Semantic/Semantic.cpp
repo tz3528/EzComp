@@ -6,15 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// 对comp语言进行语义检查：变量声明验证、方程分类、模板提取和依赖分析
 //
 //===----------------------------------------------------------------------===//
 
 
-#include "Semantic/Semantic.h"
-
 #include <queue>
 
+#include "Semantic/Semantic.h"
 #include "Semantic/DependencyGraph.h"
 
 namespace ezcompile {
@@ -151,27 +150,32 @@ void Semantic::checkFunctionType(
 	OptionsTable& opts,
 	EquationGroups& eg
 ) {
-	std::string err;
-	std::string time = *opts.getStr("timeVar", err);
+    // 每个参数可能有三种形式：
+    // 1. 纯变量（如 x, t）- 表示该维度参与迭代计算
+    // 2. 变量+/-常数（如 x+1, t-1）- 表示偏移访问，属于迭代方程
+    // 3. 常数（如 0, 10）- 表示该维度被固定，属于边界或初始化条件
+    std::string err;
+    std::string time = *opts.getStr("timeVar", err);
 
 	auto& args = call->getArgs();
 	if (call->getArgs().size() != opts.targetFunc.args.size()) {
-		//参数不一样多
 		emitError(call->getBeginLoc(),
 		          "The number of parameters in the targetFunction does not match");
 		return;
 	}
 
-	//用于记录方程类型
-	bool isBoundary = false;
-	bool isIteration = false;
-	bool isInit = false;
-	Anchor anchor;
+	// 方程类型标志：一个方程只能属于一种类型
+	bool isBoundary = false;  // 边界方程：某些空间维度被固定为常数
+	bool isIteration = false; // 迭代方程：包含t+1或变量偏移
+	bool isInit = false;      // 初始化方程：时间维度被固定为起始值
+	Anchor anchor;            // 记录被固定的维度及其索引值
+	
+	// 逐个分析每个参数的类型
 	for (size_t i = 0; i < opts.targetFunc.args.size(); ++i) {
 		auto var = args[i].get();
 		auto id = st.lookup(opts.targetFunc.args[i])->id;
 		if (i == opts.targetFunc.index) {
-			//时间变量的结构必须是t、t+1或字面量常量
+			// 时间维度参数分析
 			if (auto timeVar = llvm::dyn_cast<VarRefExprAST>(var)) {
 				if (timeVar->getName() != time) {
 					emitError(var->getBeginLoc(),
@@ -185,7 +189,7 @@ void Semantic::checkFunctionType(
 					          "The " + std::to_string(i) + "th parameter must be a timeVar");
 					return;
 				}
-				//t+1是迭代方程
+				// t+1表示迭代方程
 				isIteration = true;
 			}
 			else if (auto num = llvm::dyn_cast<IntExprAST>(var)) {
@@ -205,14 +209,13 @@ void Semantic::checkFunctionType(
 				isInit = true;
 			}
 			else {
-				//可能是浮点数
 				emitError(var->getBeginLoc(),
 				          "The " + std::to_string(i) + "th parameter must be a timeVar");
 				return;
 			}
 		}
 		else {
-			//这里不是时间变量
+			// 空间维度参数分析
 			if (auto anotherVar = llvm::dyn_cast<VarRefExprAST>(var)) {
 				if (anotherVar->getName() != opts.targetFunc.args[i]) {
 					emitError(var->getBeginLoc(),
@@ -250,6 +253,7 @@ void Semantic::checkFunctionType(
 						emitError(rhs->getBeginLoc(), "rhs must is a Interger");
 						return;
 					}
+					// 变量+/-常数表示偏移访问，属于迭代方程
 					isIteration = true;
 				}
 				else {
@@ -263,22 +267,26 @@ void Semantic::checkFunctionType(
 		}
 	}
 
+	// 根据标志位确定方程类型并分类
 	if (isIteration && !isBoundary && !isInit) {
-		eg.iter.emplace_back(equation);
+		eg.iter.emplace_back(equation);  // 纯迭代方程
 	}
 	else if (!isIteration && isBoundary && !isInit) {
+		// 边界方程：至少有一个空间维度被固定
 		if (anchor.dim.empty()) {
 			emitError(equation->getBeginLoc(), "anchor is uninitialized");
 		}
 		eg.boundary.emplace_back(EquationAnchor{equation, anchor});
 	}
 	else if (!isIteration && !isBoundary && isInit) {
+		// 初始化方程：时间维度被固定在起始点
 		if (anchor.dim.empty()) {
 			emitError(equation->getBeginLoc(), "anchor is uninitialized");
 		}
 		eg.init.emplace_back(EquationAnchor{equation, anchor});
 	}
 	else {
+		// 非法情况：一个方程不能同时属于多种类型
 		emitError(equation->getBeginLoc(), "equation have more than two type");
 	}
 }
@@ -407,9 +415,13 @@ void Semantic::checkShiftInfo(const ExprAST* expr, SymbolTable& st, TargetFuncti
 
 		auto& args = call->getArgs();
 		ShiftInfo info;
+		
+		// 提取每个维度的偏移信息
+		// 模式1：变量 +/- 常数（如 x+1, t-2）→ 记录偏移量
+		// 模式2：纯变量（如 x, t）→ 偏移量为0
 		for (size_t i = 0; i < args.size(); i++) {
-			// 这里除了时间变量外，其余变量均要枚举
 			if (auto bop = llvm::dyn_cast<BinaryExprAST>(args[i].get())) {
+				// 处理模式1：变量 +/- 常数
 				auto op = bop->getOp();
 				auto lhs = bop->getLHS();
 				auto rhs = bop->getRHS();
@@ -419,7 +431,6 @@ void Semantic::checkShiftInfo(const ExprAST* expr, SymbolTable& st, TargetFuncti
 						auto name = var->getName().str();
 						auto id = st.lookup(name)->id;
 
-						// 变量 +或- 常量，说明符合偏移模式
 						if (op == '+') {
 							info.dim.emplace_back(id);
 							info.offset.emplace_back(value);
@@ -432,16 +443,23 @@ void Semantic::checkShiftInfo(const ExprAST* expr, SymbolTable& st, TargetFuncti
 				}
 			}
 			else if (auto var = llvm::dyn_cast<VarRefExprAST>(args[i].get())) {
+				// 处理模式2：纯变量，偏移量为0
 				auto name = var->getName().str();
 				auto id = st.lookup(name)->id;
 				info.dim.emplace_back(id);
 				info.offset.emplace_back(0);
 			}
 		}
+		
+		// 记录该函数调用的完整偏移信息
 		stencil_info.call_info.emplace(call, info);
+		
+		// 按变量聚合所有出现的偏移量
 		for (size_t i = 0; i < info.dim.size(); ++i) {
 			stencil_info.symbol_info[info.dim[i]].insert(info.offset[i]);
 		}
+		
+		// 记录唯一的偏移模式
 		stencil_info.shift_infos.insert(info);
 	}
 }
