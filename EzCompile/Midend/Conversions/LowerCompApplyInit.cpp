@@ -111,10 +111,11 @@ static mlir::Value lowerCoord(mlir::OpBuilder& b, mlir::Location loc, mlir::Oper
 	return mlir::arith::AddFOp::create(b, loc, cLower, offset);
 }
 
-struct LowerApplyInitPattern : mlir::OpRewritePattern<comp::ApplyInitOp> {
-	using OpRewritePattern::OpRewritePattern;
+struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
+	using OpConversionPattern<comp::ApplyInitOp>::OpConversionPattern;
 
-	mlir::LogicalResult matchAndRewrite(comp::ApplyInitOp op, mlir::PatternRewriter& rewriter) const override {
+	mlir::LogicalResult matchAndRewrite(comp::ApplyInitOp op, OpAdaptor adaptor,
+								  mlir::ConversionPatternRewriter &rewriter) const override {
 		mlir::Location loc = op.getLoc();
 
 		// 1) 获取 memref.alloc
@@ -224,7 +225,9 @@ struct LowerApplyInitPattern : mlir::OpRewritePattern<comp::ApplyInitOp> {
 		while (cur && cur != insertPt) {
 			if (auto c = dyn_cast<comp::CoordOp>(cur)) coordsToLower.push_back(c);
 			if (auto y = dyn_cast<comp::YieldOp>(cur)) yieldOp = y;
-			if (!llvm::isa<comp::CoordOp>(cur) && !llvm::isa<comp::YieldOp>(cur)) {
+			if (!firstNonCoord &&
+				!llvm::isa<comp::CoordOp>(cur) &&
+				!llvm::isa<comp::YieldOp>(cur)) {
 				firstNonCoord = cur;
 			}
 			cur = cur->getNextNode();
@@ -276,6 +279,10 @@ struct LowerApplyInitPattern : mlir::OpRewritePattern<comp::ApplyInitOp> {
 struct LowerCompApplyInitPass : mlir::PassWrapper<LowerCompApplyInitPass, mlir::OperationPass<mlir::ModuleOp>> {
 	MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerCompApplyInitPass)
 
+	void getDependentDialects(mlir::DialectRegistry& registry) const override {
+		registry.insert<mlir::arith::ArithDialect, mlir::memref::MemRefDialect, comp::CompDialect>();
+	}
+
 	mlir::StringRef getArgument() const final { return "lower-comp-apply-init"; }
 
 	mlir::StringRef getDescription() const final {
@@ -283,14 +290,20 @@ struct LowerCompApplyInitPass : mlir::PassWrapper<LowerCompApplyInitPass, mlir::
 	}
 
 	void runOnOperation() override {
-		mlir::MLIRContext* ctx = &getContext();
-		mlir::ModuleOp m = getOperation();
+		mlir::MLIRContext* context = &getContext();
+		mlir::ModuleOp module = getOperation();
 
-		mlir::RewritePatternSet patterns(ctx);
-		patterns.add<LowerApplyInitPattern>(ctx);
+		mlir::ConversionTarget target(*context);
 
-		// 我们只进行重写，不需要转换合法性检查
-		if (mlir::failed(applyPatternsGreedily(m, std::move(patterns)))) {
+		// 标记 Affine,Memref,Arith 为合法
+		target.addLegalDialect<mlir::affine::AffineDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect>();
+		// 标记 comp.for_time 为非法
+		target.addIllegalOp<comp::ApplyInitOp>();
+
+		mlir::RewritePatternSet patterns(context);
+		patterns.add<LowerApplyInitPattern>(context);
+
+		if (mlir::failed(applyPartialConversion(module, target, std::move(patterns)))) {
 			signalPassFailure();
 		}
 	}
