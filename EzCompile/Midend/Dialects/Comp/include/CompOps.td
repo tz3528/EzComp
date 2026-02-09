@@ -70,7 +70,8 @@ def DimOp : Comp_Op<"dim", [Symbol]> {
         SymbolNameAttr:$sym_name,
         F64Attr:$lower,
         F64Attr:$upper,
-        I64Attr:$points
+        I64Attr:$points,
+        UnitAttr:$timeVar
     );
 
     let assemblyFormat = "$sym_name `domain` `<` `lower` `=` $lower `,` `upper` `=` $upper `,` `points` `=` $points `>` attr-dict";
