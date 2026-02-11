@@ -15,8 +15,6 @@
 
 #include "MLIRGen.h"
 
-#include <thread>
-
 namespace ezcompile {
 MLIRGen::MLIRGen(const ParsedModule& pm, mlir::MLIRContext& context)
 	: pm(pm), builder(&context), context(context) {
@@ -292,7 +290,7 @@ mlir::LogicalResult MLIRGen::genApplyInit(mlir::Value field) {
 		// 固定维度：索引来自 anchors（常量）
 		for (size_t i = 0; i < anchor.dim.size(); ++i) {
 			SymbolId d = anchor.dim[i];
-			uint64_t ix = static_cast<double>(anchor.index[i]);
+			uint64_t ix = anchor.index[i];
 			mlir::Value cix = mlir::arith::ConstantIndexOp::create(builder, loc, ix);
 			dimIndexEnv[d] = cix;
 			dimCoordEnv[d] = comp::CoordOp::create(builder, loc, f64Ty, mkDimRef(d), cix);

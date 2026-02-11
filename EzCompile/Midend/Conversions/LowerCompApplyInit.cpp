@@ -22,6 +22,8 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "Dialects/Comp/include/Comp.h"
+#include "Utils/BuilderUtil.h"
+#include "Utils/LowerUtil.h"
 
 namespace ezcompile {
 
@@ -37,78 +39,6 @@ static mlir::Value stripCasts(mlir::Value v) {
 static mlir::memref::AllocOp getDefiningFieldOp(mlir::Value maybeFieldLike) {
 	mlir::Value base = stripCasts(maybeFieldLike);
 	return base.getDefiningOp<mlir::memref::AllocOp>();
-}
-
-// 附近通过符号引用查找 comp.dim
-static comp::DimOp lookupDimOp(mlir::Operation* from, mlir::FlatSymbolRefAttr dimSym) {
-	if (!dimSym) return {};
-	mlir::Operation* sym = mlir::SymbolTable::lookupNearestSymbolFrom(from, dimSym.getAttr());
-	return dyn_cast_or_null<comp::DimOp>(sym);
-}
-
-// 将任何数值/索引值转换为 f64（用于 yield 值和坐标计算）
-static mlir::Value castToF64(mlir::OpBuilder& b, mlir::Location loc, mlir::Value v) {
-	mlir::Type t = v.getType();
-	mlir::Type f64 = b.getF64Type();
-
-	if (t == f64) return v;
-
-	if (auto ft = dyn_cast<mlir::FloatType>(t)) {
-		if (ft.getWidth() < 64) {
-			return mlir::arith::ExtFOp::create(b, loc, f64, v);
-		}
-		if (ft.getWidth() > 64) {
-			return mlir::arith::TruncFOp::create(b, loc, f64, v);
-		}
-	}
-
-	if (llvm::isa<mlir::IndexType>(t)) {
-		auto i64 = b.getI64Type();
-		mlir::Value asI64 = mlir::arith::IndexCastOp::create(b, loc, i64, v);
-		return mlir::arith::SIToFPOp::create(b, loc, f64, asI64);
-	}
-
-	if (auto it = dyn_cast<mlir::IntegerType>(t)) {
-		// 整型只存在有符号整型
-		return mlir::arith::SIToFPOp::create(b, loc, f64, v);
-	}
-
-	// 应该不存在其它类型
-	llvm_unreachable("Unsupported type for castToF64");
-}
-
-// coord操作降级，计算方式为 lb + (ub - lb) * (index / (points - 1))
-static mlir::Value lowerCoord(mlir::OpBuilder& b, mlir::Location loc, mlir::Operation* anchorOp,
-                              mlir::FlatSymbolRefAttr dimSym, mlir::Value ivIndex) {
-	comp::DimOp dimOp = lookupDimOp(anchorOp, dimSym);
-	if (!dimOp) {
-		anchorOp->emitError() << "cannot resolve comp.dim for " << dimSym;
-		return {};
-	}
-
-	double lower = dimOp.getLower().convertToDouble();
-	double upper = dimOp.getUpper().convertToDouble();
-	int64_t points = static_cast<int64_t>(dimOp.getPoints());
-
-	mlir::Type f64 = b.getF64Type();
-	mlir::Type i64 = b.getI64Type();
-
-	mlir::Value cLower = mlir::arith::ConstantFloatOp::create(b, loc, cast<mlir::FloatType>(f64), mlir::APFloat(lower));
-	mlir::Value cUpper = mlir::arith::ConstantFloatOp::create(b, loc, cast<mlir::FloatType>(f64), mlir::APFloat(upper));
-
-	mlir::Value cPointsI64 = mlir::arith::ConstantIntOp::create(b, loc, i64, points);
-	mlir::Value cOneI64 = mlir::arith::ConstantIntOp::create(b, loc, i64, 1);
-	mlir::Value denomI64 = mlir::arith::SubIOp::create(b, loc, cPointsI64, cOneI64);
-
-	// iv: index -> i64 -> f64
-	mlir::Value ivI64 = mlir::arith::IndexCastOp::create(b, loc, i64, ivIndex);
-	mlir::Value ivF64 = mlir::arith::SIToFPOp::create(b, loc, f64, ivI64);
-	mlir::Value denomF64 = mlir::arith::SIToFPOp::create(b, loc, f64, denomI64);
-
-	mlir::Value span = mlir::arith::SubFOp::create(b, loc, cUpper, cLower);
-	mlir::Value ratio = mlir::arith::DivFOp::create(b, loc, ivF64, denomF64);
-	mlir::Value offset = mlir::arith::MulFOp::create(b, loc, span, ratio);
-	return mlir::arith::AddFOp::create(b, loc, cLower, offset);
 }
 
 struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
@@ -160,16 +90,11 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 		// 4) 构建一个映射 dim -> 索引值（循环 iv 或常量）
 		mlir::DenseMap<mlir::Attribute, mlir::Value> dimIndexVal;
 
-		// 创建一个 lambda 来实例化固定索引常量
-		auto constIndex = [&](uint64_t idx) -> mlir::Value {
-			return mlir::arith::ConstantIndexOp::create(rewriter, loc, static_cast<int64_t>(idx));
-		};
-
 		// 所有固定维度的索引应当是固定值
 		for (auto& kv : fixed) {
 			auto d = dyn_cast<mlir::FlatSymbolRefAttr>(kv.first);
 			if (!d) continue;
-			dimIndexVal[d] = constIndex(kv.second);
+			dimIndexVal[d] = constIndex(rewriter, loc, kv.second);
 		}
 
 		// 对所有未固定的维度创建循环
