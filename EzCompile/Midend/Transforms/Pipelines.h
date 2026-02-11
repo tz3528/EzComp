@@ -42,6 +42,7 @@ std::unique_ptr<mlir::Pass> createLowerCompDimPass();
 std::unique_ptr<mlir::Pass> createLowerCompFieldPass();
 std::unique_ptr<mlir::Pass> createLowerCompPointsPass();
 std::unique_ptr<mlir::Pass> createLowerCompApplyInitPass();
+std::unique_ptr<mlir::Pass> createLowerCompForTimePass();
 
 }
 
