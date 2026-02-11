@@ -22,12 +22,14 @@ void registerLowerCompDimPass();
 void registerLowerCompFieldPass();
 void registerLowerCompPointsPass();
 void registerLowerCompApplyInitPass();
+void registerLowerCompForTimePass();
 
 inline void registerPasses() {
 	registerLowerCompDimPass();
 	registerLowerCompFieldPass();
 	registerLowerCompPointsPass();
 	registerLowerCompApplyInitPass();
+	registerLowerCompForTimePass();
 }
 
 }

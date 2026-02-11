@@ -46,12 +46,6 @@ def Comp_FieldType : TypeDef<Comp_Dialect, "Field"> {
     let assemblyFormat = "`<` $elementType `>`";
 }
 
-def Comp_BoundaryType : TypeDef<Comp_Dialect, "Boundary"> {
-    let mnemonic = "boundary";
-    let summary = "A single boundary-condition handle.";
-    let assemblyFormat = "";
-}
-
 //===----------------------------------------------------------------------===//
 // Attributes
 //   - #comp.anchor<...>

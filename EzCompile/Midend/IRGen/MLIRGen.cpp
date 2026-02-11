@@ -15,8 +15,6 @@
 
 #include "MLIRGen.h"
 
-#include <thread>
-
 namespace ezcompile {
 MLIRGen::MLIRGen(const ParsedModule& pm, mlir::MLIRContext& context)
 	: pm(pm), builder(&context), context(context) {
@@ -208,34 +206,14 @@ mlir::LogicalResult MLIRGen::genSolve(mlir::Value field) {
 
 	// Step region
 	{
-		llvm::SmallVector<mlir::Type> argTypes;
-		llvm::SmallVector<mlir::Location> argLocs;
-
-		for (mlir::Value h : boundaryHandles) {
-			argTypes.push_back(h.getType());
-			argLocs.push_back(loc);
-		}
-
 		mlir::Region& stepRegion = solve.getStep();
+		stepRegion.emplaceBlock();
 
 		mlir::OpBuilder::InsertionGuard guard(builder);
-		mlir::Block* stepBlock = builder.createBlock(&stepRegion, stepRegion.end(),
-		                                             argTypes, argLocs);
-
-		// 这里要把boundaryt中的句柄替换成step的属性
-		boundaryHandles.clear();
-		boundaryHandles.append(stepBlock->args_begin(), stepBlock->args_end());
-
-		builder.setInsertionPointToStart(stepBlock);
+		builder.setInsertionPointToStart(&stepRegion.front());
 
 		auto timePoints = genPoints(loc, pm.sema->target.timeDim);
 		if (mlir::failed(timePoints)) {
-			return mlir::failure();
-		}
-
-		mlir::Value c0 = mlir::arith::ConstantIndexOp::create(builder, loc, 0);
-
-		if (mlir::failed(genEnforceBoundary(field, c0))) {
 			return mlir::failure();
 		}
 
@@ -312,7 +290,7 @@ mlir::LogicalResult MLIRGen::genApplyInit(mlir::Value field) {
 		// 固定维度：索引来自 anchors（常量）
 		for (size_t i = 0; i < anchor.dim.size(); ++i) {
 			SymbolId d = anchor.dim[i];
-			uint64_t ix = static_cast<double>(anchor.index[i]);
+			uint64_t ix = anchor.index[i];
 			mlir::Value cix = mlir::arith::ConstantIndexOp::create(builder, loc, ix);
 			dimIndexEnv[d] = cix;
 			dimCoordEnv[d] = comp::CoordOp::create(builder, loc, f64Ty, mkDimRef(d), cix);
@@ -350,18 +328,9 @@ mlir::LogicalResult MLIRGen::genDirichlet(mlir::Value field) {
 			fixedDims.insert(anchor.dim[i]);
 		}
 
-		// Dirichlet: timeDim 应该是“自由”的（边界随时间变化/在每个 time step 应用）
-		if (fixedDims.contains(meta.timeDim)) {
-			return mlir::emitError(loc, "In the boundary equation, timeVar must NOT be fixed");
-		}
-
 		auto anchorsAttr = builder.getArrayAttr(anchors);
 
-		// 结果类型：!comp.boundary
-		mlir::Type boundaryTy = comp::BoundaryType::get(&context);
-		llvm::SmallVector<mlir::Type, 1> resultTypes{boundaryTy};
-
-		auto dOp = comp::DirichletOp::create(builder, loc, resultTypes, field, anchorsAttr);
+		auto dOp = comp::DirichletOp::create(builder, loc, field, anchorsAttr);
 
 		// 获取并设置 region
 		mlir::Region& dRegion = dOp.getRegion();
@@ -406,11 +375,7 @@ mlir::LogicalResult MLIRGen::genDirichlet(mlir::Value field) {
 		auto valueOr = genExpr(ea.eq->getRHS());
 		if (mlir::failed(valueOr)) return mlir::failure();
 		if (mlir::failed(emitYield(loc, *valueOr))) return mlir::failure();
-
-		boundaryHandles.emplace_back(dOp);
 	}
-
-	comp::YieldOp::create(builder, loc, boundaryHandles);
 
 	return mlir::success();
 }
@@ -444,10 +409,6 @@ mlir::LogicalResult MLIRGen::genForTime(mlir::Value field, mlir::Value timePoint
 		dimCoordEnv[tid] = comp::CoordOp::create(builder, loc, f64Ty, mkDimRef(tid), body->getArgument(0));
 
 		if (mlir::failed(genUpdate(field, tctx))) {
-			return mlir::failure();
-		}
-
-		if (mlir::failed(genEnforceBoundary(field, tctx.writeTime))) {
 			return mlir::failure();
 		}
 	}
@@ -557,28 +518,6 @@ mlir::LogicalResult MLIRGen::genSample(mlir::Value field) {
 
 		shiftInfoEnv[info] = sample.getResult();
 	}
-
-	return mlir::success();
-}
-
-mlir::LogicalResult MLIRGen::genEnforceBoundary(mlir::Value field, mlir::Value atTime) {
-	mlir::Location loc = mlir::UnknownLoc::get(&context);
-
-	if (boundaryHandles.empty()) {
-		return mlir::success();
-	}
-
-	if (!atTime || !atTime.getType().isIndex()) {
-		return mlir::emitError(loc, "comp.enforce_boundary: atTime must be index");
-	}
-
-	for (mlir::Value b : boundaryHandles) {
-		if (!mlir::isa<comp::BoundaryType>(b.getType())) {
-			return mlir::emitError(loc, "comp.enforce_boundary: each boundary must be !comp.boundary");
-		}
-	}
-
-	comp::EnforceBoundaryOp::create(builder, loc, field, boundaryHandles, atTime);
 
 	return mlir::success();
 }

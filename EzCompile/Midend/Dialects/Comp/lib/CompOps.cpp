@@ -94,23 +94,6 @@ mlir::LogicalResult DirichletOp::verify() {
     return mlir::success();
 }
 
-mlir::LogicalResult EnforceBoundaryOp::verify() {
-    // 检查 boundaries 参数是否都是 !comp.boundary 类型
-    auto boundaries = getBoundaries();
-    for (auto boundary : boundaries) {
-        if (!llvm::isa<BoundaryType>(boundary.getType())) {
-            return emitOpError("all boundaries must be of !comp.boundary type");
-        }
-    }
-
-    // 检查是否至少有一个边界条件
-    if (boundaries.empty()) {
-        return emitOpError("at least one boundary must be specified");
-    }
-
-    return mlir::success();
-}
-
 mlir::LogicalResult FieldOp::verify() {
     // 获取 ProblemOp（父操作）
     auto *parentOp = (*this)->getParentOp();
