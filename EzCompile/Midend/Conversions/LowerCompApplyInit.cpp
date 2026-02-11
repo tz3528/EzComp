@@ -172,9 +172,6 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 			dimIndexVal[d] = constIndex(kv.second);
 		}
 
-		// 在 op 的起始位置插入所有内容
-		rewriter.setInsertionPoint(op);
-
 		// 对所有未固定的维度创建循环
 		mlir::SmallVector<mlir::affine::AffineForOp, 4> loops;
 		for (mlir::FlatSymbolRefAttr d : unfixedDims) {
@@ -223,15 +220,17 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 
 		mlir::Operation* cur = marker ? marker->getNextNode() : &dstBlock->front();
 		while (cur && cur != insertPt) {
-			if (auto c = dyn_cast<comp::CoordOp>(cur)) coordsToLower.push_back(c);
-			if (auto y = dyn_cast<comp::YieldOp>(cur)) yieldOp = y;
-			if (!firstNonCoord &&
-				!llvm::isa<comp::CoordOp>(cur) &&
-				!llvm::isa<comp::YieldOp>(cur)) {
+			if (auto c = dyn_cast<comp::CoordOp>(cur)) {
+				coordsToLower.push_back(c);
 				firstNonCoord = cur;
 			}
+			if (auto y = dyn_cast<comp::YieldOp>(cur)) yieldOp = y;
 			cur = cur->getNextNode();
 		}
+		if (firstNonCoord == nullptr) {
+			return mlir::emitError(loc, "don`t have CoordOp");
+		}
+		firstNonCoord = firstNonCoord->getNextNode();
 
 		if (!yieldOp) {
 			return rewriter.notifyMatchFailure(op, "rhs region has no comp.yield after inlining");
