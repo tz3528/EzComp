@@ -27,20 +27,6 @@
 
 namespace ezcompile {
 
-/// --------- 穿透 unrealized cast 拿到对应的 alloc ---------
-static mlir::Value stripCasts(mlir::Value v) {
-	while (auto cast = v.getDefiningOp<mlir::UnrealizedConversionCastOp>()) {
-		if (cast.getNumOperands() == 0) break;
-		v = cast.getOperand(0);
-	}
-	return v;
-}
-
-static mlir::memref::AllocOp getDefiningFieldOp(mlir::Value maybeFieldLike) {
-	mlir::Value base = stripCasts(maybeFieldLike);
-	return base.getDefiningOp<mlir::memref::AllocOp>();
-}
-
 struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 	using OpConversionPattern<comp::ApplyInitOp>::OpConversionPattern;
 
@@ -98,7 +84,6 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 		}
 
 		// 对所有未固定的维度创建循环
-		mlir::SmallVector<mlir::affine::AffineForOp, 4> loops;
 		for (mlir::FlatSymbolRefAttr d : unfixedDims) {
 			// ub = points(@d) -> 从 comp.dim 属性获取 (i64) -> 常量索引
 			comp::DimOp dimOp = lookupDimOp(op, d);
@@ -106,7 +91,6 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 
 			// affine.for %iv = 0 to ub step 1
 			auto forOp = mlir::affine::AffineForOp::create(rewriter, loc, /*lb=*/0, /*ub=*/points, /*step=*/1);
-			loops.emplace_back(forOp);
 			mlir::Value iv = forOp.getInductionVar();
 			dimIndexVal[d] = iv;
 
