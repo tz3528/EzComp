@@ -211,6 +211,8 @@ struct LowerCompDirichletPass : mlir::PassWrapper<LowerCompDirichletPass, mlir::
 		registry.insert<mlir::arith::ArithDialect, mlir::memref::MemRefDialect, comp::CompDialect>();
 	}
 
+	mlir::StringRef getArgument() const override { return "lower-comp-dirichlet"; }
+
 	void runOnOperation() override {
 		mlir::MLIRContext* context = &getContext();
 		mlir::ModuleOp module = getOperation();

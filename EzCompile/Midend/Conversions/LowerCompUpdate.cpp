@@ -152,6 +152,8 @@ struct LowerCompUpdatePass : mlir::PassWrapper<LowerCompUpdatePass, mlir::Operat
 		registry.insert<mlir::affine::AffineDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect>();
 	}
 
+	mlir::StringRef getArgument() const override { return "lower-comp-update"; }
+
 	void runOnOperation() override {
 		mlir::MLIRContext* context = &getContext();
 		mlir::ModuleOp module = getOperation();

@@ -7,5 +7,7 @@ target_sources(Midend PRIVATE
         LowerCompField.cpp
         LowerCompForTime.cpp
         LowerCompPoints.cpp
+        LowerCompProblem.cpp
+        LowerCompSolve.cpp
         LowerCompUpdate.cpp
 )

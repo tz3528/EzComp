@@ -23,8 +23,6 @@
 
 namespace ezcompile {
 
-static constexpr mlir::StringLiteral kDimsAttrName = "comp.dims";
-
 struct LowerDimPattern : mlir::OpConversionPattern<comp::DimOp> {
 	using OpConversionPattern<comp::DimOp>::OpConversionPattern;
 
@@ -44,15 +42,15 @@ struct LowerCompDimPass : mlir::PassWrapper<LowerCompDimPass, mlir::OperationPas
 		registry.insert<mlir::arith::ArithDialect>();
 	}
 
+	mlir::StringRef getArgument() const override { return "lower-comp-dim"; }
+
 	void runOnOperation() override {
 		mlir::MLIRContext* context = &getContext();
 		mlir::ModuleOp module = getOperation();
 
 		mlir::ConversionTarget target(*context);
 
-		// 标记 Affine, Arith 为合法
 		target.addLegalDialect<mlir::arith::ArithDialect>();
-		// 标记 comp.for_time 为非法，强制框架对其进行转换
 		target.addIllegalOp<comp::DimOp>();
 
 		mlir::RewritePatternSet patterns(context);

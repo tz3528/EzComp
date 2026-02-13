@@ -134,8 +134,15 @@ static int dumpMLIR() {
 
     if (passPipeline.hasAnyOccurrences()) {
         mlir::PassManager pm(&context);
-        PipelineOptions po;
-        buildPipeline(pm, po);
+
+        auto errHandler = [&](const llvm::Twine &msg) -> mlir::LogicalResult {
+            llvm::errs() << "Failed to parse/add pass pipeline: " << msg << "\n";
+            return mlir::failure();
+        };
+
+        if (mlir::failed(passPipeline.addToPipeline(pm, errHandler))) {
+            return 3;
+        }
 
         if (mlir::failed(pm.run(*mo))) {
             llvm::errs() << "Pipeline failed\n";
@@ -155,6 +162,8 @@ int main(int argc, char **argv) {
     // Register any command line options.
     mlir::registerAsmPrinterCLOptions();
     mlir::registerMLIRContextCLOptions();
+    registerPasses();
+    registerPipelines();
     cl::ParseCommandLineOptions(argc, argv, "comp compiler\n");
 
     switch (emitAction) {

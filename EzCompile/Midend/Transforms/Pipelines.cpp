@@ -17,13 +17,20 @@ namespace ezcompile {
 
 void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 
-	pm.addPass(createLowerCompPointsPass());
-	pm.addPass(createLowerCompFieldPass());
-	pm.addPass(createLowerCompApplyInitPass());
-	pm.addPass(createLowerCompDirichletPass());
-	pm.addPass(createLowerCompForTimePass());
-	pm.addPass(createLowerCompUpdatePass());
-	pm.addPass(createLowerCompDimPass());
+	if (opt.enableLowerToBase.getValue()) {
+		pm.addPass(createLowerCompPointsPass());
+		pm.addPass(createLowerCompFieldPass());
+		pm.addPass(createLowerCompApplyInitPass());
+		pm.addPass(createLowerCompDirichletPass());
+		pm.addPass(createLowerCompForTimePass());
+		pm.addPass(createLowerCompUpdatePass());
+		pm.addPass(createLowerCompDimPass());
+		pm.addPass(createLowerCompSolvePass());
+		pm.addPass(createLowerCompProblemPass());
+
+		pm.addPass(mlir::createCanonicalizerPass()); // 规范化 + 常量折叠(folding)
+		pm.addPass(mlir::createCSEPass());           // 公共子表达式消除
+	}
 
 }
 

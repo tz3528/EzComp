@@ -107,6 +107,8 @@ struct LowerCompForTimePass : mlir::PassWrapper<LowerCompForTimePass, mlir::Oper
 		registry.insert<mlir::affine::AffineDialect, mlir::arith::ArithDialect>();
 	}
 
+	mlir::StringRef getArgument() const override { return "lower-comp-for_time"; }
+
 	void runOnOperation() override {
 		mlir::MLIRContext* context = &getContext();
 		mlir::ModuleOp module = getOperation();
