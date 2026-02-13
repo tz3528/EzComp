@@ -23,6 +23,7 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 	pm.addPass(createLowerCompApplyInitPass());
 	pm.addPass(createLowerCompDirichletPass());
 	pm.addPass(createLowerCompForTimePass());
+	pm.addPass(createLowerCompUpdatePass());
 
 }
 

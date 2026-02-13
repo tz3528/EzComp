@@ -14,6 +14,10 @@
 #ifndef EZ_COMPILE_LOWER_UTIL_H
 #define EZ_COMPILE_LOWER_UTIL_H
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+
+#include "BuilderUtil.h"
+
 namespace ezcompile {
 
 /// --------- 穿透 unrealized cast 拿到对应的 alloc ---------
@@ -71,61 +75,41 @@ inline mlir::Value lowerCoord(mlir::OpBuilder& b, mlir::Location loc, mlir::Oper
 	return mlir::arith::AddFOp::create(b, loc, cLower, offset);
 }
 
-inline mlir::Value modIndex(mlir::OpBuilder &b,
-							  mlir::Location loc,
-							  mlir::Value ivIndex,
-							  int64_t modulus) {
-	if (!ivIndex || !ivIndex.getType().isIndex()) {
-		mlir::emitError(loc, "modIndex: ivIndex must be index type");
-		return {};
-	}
-	if (modulus == 0) {
-		mlir::emitError(loc, "modIndex: modulus must be non-zero");
-		return {};
-	}
+inline mlir::Value lowerSample(mlir::OpBuilder& b, mlir::Location loc,
+                               comp::SampleOp sampleOp,
+                               mlir::ValueRange spatialIndices) {
+    mlir::memref::AllocOp allocOp = getDefiningFieldOp(sampleOp.getField());
+    if (!allocOp) {
+        sampleOp.emitError() << "cannot resolve defining alloc op for field " << sampleOp.getField();
+        return {};
+    }
+    mlir::Value memref = allocOp.getResult();
 
-	mlir::Type i64 = b.getI64Type();
-	mlir::Type idx = b.getIndexType();
+    llvm::SmallVector<mlir::Value, 4> accessIndices;
 
-	mlir::Value cModI64 = mlir::arith::ConstantIntOp::create(b, loc, i64, modulus);
+    llvm::ArrayRef<int64_t> shifts = sampleOp.getShift();
 
-	// index -> i64
-	mlir::Value ivI64 = mlir::arith::IndexCastOp::create(b, loc, i64, ivIndex);
+    // 校验：运行时提供的空间索引数量必须与静态定义的 shift 数量一致
+    if (spatialIndices.size() != shifts.size()) {
+        sampleOp.emitError() << "spatial indices count (" << spatialIndices.size()
+                             << ") does not match shift count (" << shifts.size() << ")";
+        return {};
+    }
 
-	// i64 % i64
-	mlir::Value rI64 = mlir::arith::RemSIOp::create(b, loc, ivI64, cModI64);
+    // 遍历空间索引并应用偏移
+    for (auto it : llvm::zip(spatialIndices, shifts)) {
+        mlir::Value iv = std::get<0>(it);
+        int64_t shiftVal = std::get<1>(it);
+        if (shiftVal == 0) {
+            accessIndices.push_back(iv);
+        } else {
+            mlir::Value cShift = b.create<mlir::arith::ConstantIndexOp>(loc, shiftVal);
+            mlir::Value shiftedIv = b.create<mlir::arith::AddIOp>(loc, iv, cShift);
+            accessIndices.push_back(shiftedIv);
+        }
+    }
 
-	// i64 -> index
-	return mlir::arith::IndexCastOp::create(b, loc, idx, rI64);
-}
-
-inline mlir::Value modInt64(mlir::OpBuilder &b,
-						  mlir::Location loc,
-						  mlir::Value ivInt,
-						  int64_t modulus) {
-	if (!ivInt) return {};
-	if (modulus == 0) {
-		mlir::emitError(loc, "modInt64: modulus must be non-zero");
-		return {};
-	}
-
-	// 明确拒绝 index：只允许真正的 IntegerType
-	if (ivInt.getType().isIndex()) {
-		mlir::emitError(loc, "modInt: index type is not allowed; expected integer type");
-		return {};
-	}
-
-	auto intTy = llvm::dyn_cast<mlir::IntegerType>(ivInt.getType());
-	if (!intTy) {
-		mlir::emitError(loc, "modInt: ivInt must be an integer type");
-		return {};
-	}
-
-	// modulus 常量使用同位宽类型（必要时会截断到该位宽）
-	mlir::Value cMod = mlir::arith::ConstantIntOp::create(b, loc, intTy, modulus);
-
-	// 整型同位宽取模，结果类型与 ivInt 相同
-	return mlir::arith::RemSIOp::create(b, loc, ivInt, cMod);
+    return b.create<mlir::memref::LoadOp>(loc, memref, accessIndices);
 }
 
 }

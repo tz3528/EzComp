@@ -93,15 +93,13 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
         auto emitCalculationLogic = [&](mlir::DenseMap<mlir::Attribute, mlir::Value>& currentDimIndices) -> mlir::LogicalResult {
             mlir::IRMapping mapper; // 用于映射原 Block 的值到新克隆的值
 
-            // A. 映射 Block Arguments (Coord getIv() 获取的值)
-            // CoordOp 读取的是 Block 参数，我们需要将其映射到当前的循环 IV 或固定值
+            // 映射 Block Arguments (Coord getIv() 获取的值)
             for (mlir::Operation& inner : srcBlock.getOperations()) {
                 if (auto coord = dyn_cast<comp::CoordOp>(inner)) {
                     mlir::Value iv = coord.getIv();
                     if (auto barg = dyn_cast<mlir::BlockArgument>(iv)) {
                         if (barg.getOwner() == &srcBlock) {
                             auto dimAttr = coord.getDimAttr();
-                            // 查找当前上下文中的维度值（可能是 IV，也可能是常量）
                             if (currentDimIndices.count(dimAttr)) {
                                 mapper.map(barg, currentDimIndices[dimAttr]);
                             }
@@ -110,26 +108,23 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
                 }
             }
 
-            // B. 克隆 Op (跳过 CoordOp 和 YieldOp 的特殊处理)
-            // 注意：我们不移动原 Op，而是克隆它们
+            // 克隆 Op (跳过 CoordOp 和 YieldOp 的特殊处理)
             for (mlir::Operation &opInst : srcBlock.without_terminator()) {
                 if (auto coord = dyn_cast<comp::CoordOp>(opInst)) {
                     // 特殊处理 CoordOp：不要克隆它，而是计算出它的值
                     mlir::Value mappedIv = mapper.lookupOrDefault(coord.getIv());
 
-                    // 调用你的 lowerCoord 函数生成计算代码 (Arith Ops)
                     mlir::Value coordVal = lowerCoord(rewriter, coord.getLoc(), op, coord.getDimAttr(), mappedIv);
                     if (!coordVal) return mlir::failure();
 
                     // 将原 CoordOp 的结果映射到新计算的值
                     mapper.map(coord.getResult(), coordVal);
                 } else {
-                    // 普通 Op：直接克隆
                     rewriter.clone(opInst, mapper);
                 }
             }
 
-            // C. 处理 Yield (Terminator)
+            // 处理 Yield
             if (auto yieldOp = dyn_cast<comp::YieldOp>(srcBlock.getTerminator())) {
                 if (yieldOp.getNumOperands() != 1) return mlir::failure();
 

@@ -24,6 +24,7 @@ void registerLowerCompPointsPass();
 void registerLowerCompApplyInitPass();
 void registerLowerCompForTimePass();
 void registerLowerCompDirichletPass();
+void registerLowerCompUpdatePass();
 
 inline void registerPasses() {
 	registerLowerCompDimPass();
@@ -32,6 +33,7 @@ inline void registerPasses() {
 	registerLowerCompApplyInitPass();
 	registerLowerCompForTimePass();
 	registerLowerCompDirichletPass();
+	registerLowerCompUpdatePass();
 }
 
 }
