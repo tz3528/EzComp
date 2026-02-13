@@ -17,7 +17,6 @@ target_link_libraries(Midend PUBLIC Frontend)
 target_link_libraries(Midend PUBLIC
         MLIRIR
         MLIRSupport
-        MLIRArithDialect
 )
 
 # 收集头文件

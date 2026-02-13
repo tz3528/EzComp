@@ -2,6 +2,7 @@
 
 target_sources(Midend PRIVATE
         LowerCompApplyInit.cpp
+        LowerCompCall.cpp
         LowerCompDim.cpp
         LowerCompDirichlet.cpp
         LowerCompField.cpp

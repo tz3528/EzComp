@@ -26,6 +26,8 @@
 #include "EzCompile/Frontend/include/AST.h"
 #include "EzCompile/Frontend/include/Semantic/Semantic.h"
 #include "IRGen/MLIRGen.h"
+#include "mlir/Dialect/Func/IR/FuncOpsDialect.h.inc"
+#include "mlir/Dialect/Math/IR/MathOpsDialect.h.inc"
 #include "Transforms/Pipelines.h"
 #include "Transforms/Passes.h"
 
@@ -121,9 +123,10 @@ static int dumpMLIR() {
     mlir::MLIRContext context;
 
     context.getOrLoadDialect<comp::CompDialect>();
-    context.getOrLoadDialect<mlir::arith::ArithDialect>();
-    context.getOrLoadDialect<mlir::memref::MemRefDialect>();
     context.getOrLoadDialect<mlir::affine::AffineDialect>();
+    context.getOrLoadDialect<mlir::arith::ArithDialect>();
+    context.getOrLoadDialect<mlir::math::MathDialect>();
+    context.getOrLoadDialect<mlir::memref::MemRefDialect>();
 
     MLIRGen gen(*parse_module, context);
     auto mo = gen.mlirGen();

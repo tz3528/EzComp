@@ -46,6 +46,7 @@ std::unique_ptr<mlir::Pass> createLowerCompDirichletPass();
 std::unique_ptr<mlir::Pass> createLowerCompUpdatePass();
 std::unique_ptr<mlir::Pass> createLowerCompSolvePass();
 std::unique_ptr<mlir::Pass> createLowerCompProblemPass();
+std::unique_ptr<mlir::Pass> createLowerCompCallPass();
 
 }
 

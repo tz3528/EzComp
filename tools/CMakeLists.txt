@@ -30,6 +30,7 @@ target_link_libraries(ezcomp PRIVATE
 
         MLIRAffineDialect
         MLIRArithDialect
+        MLIRMathDialect
         MLIRMemRefDialect
 )
 
