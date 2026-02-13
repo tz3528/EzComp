@@ -20,6 +20,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "Dialects/Comp/include/Comp.h"
+#include "Utils/LowerUtil.h"
 
 namespace ezcompile {
 
@@ -31,7 +32,6 @@ struct LowerForTimePattern : mlir::OpConversionPattern<comp::ForTimeOp> {
 	                              mlir::ConversionPatternRewriter& rewriter) const override {
 		// 1. 获取并验证 Step (步长)
 		// affine.for 要求步长必须是 int64_t 常量。
-		// 我们检查转换后的 step 操作数是否定义自一个常量。
 		mlir::APInt stepInt;
 		if (!matchPattern(adaptor.getStep(), mlir::m_ConstantInt(&stepInt))) {
 			return rewriter.notifyMatchFailure(op, "step operand is not a constant integer");
@@ -39,7 +39,6 @@ struct LowerForTimePattern : mlir::OpConversionPattern<comp::ForTimeOp> {
 		int64_t step = stepInt.getSExtValue();
 
 		// 2. 获取 Lower 和 Upper Bounds
-		// 注意：必须使用 adaptor 获取转换后的操作数，而不是原始操作数
 		mlir::Value lb = adaptor.getLb();
 		mlir::Value ub = adaptor.getUb();
 
@@ -68,8 +67,28 @@ struct LowerForTimePattern : mlir::OpConversionPattern<comp::ForTimeOp> {
 		mlir::Operation *newYield = newBody->getTerminator();
 		rewriter.inlineBlockBefore(oldBody, newBody, newYield->getIterator(), newArgs);
 
+		mlir::Operation* cur = &newBody->front();
+		rewriter.setInsertionPointAfter(cur);
+		mlir::Operation* end = &newBody->back();
+		mlir::SmallVector<comp::CoordOp, 8> coordsToLower;
+		while (cur && cur != end) {
+			if (auto c = dyn_cast<comp::CoordOp>(cur)) {
+				coordsToLower.emplace_back(c);
+			}
+			cur = cur->getNextNode();
+		}
+
+		for (comp::CoordOp c : coordsToLower) {
+			mlir::Value iv = c.getIv(); // 已通过内联 argValues 替换
+			mlir::Value coordVal = lowerCoord(rewriter, c.getLoc(), op, c.getDimAttr(), iv);
+			if (!coordVal) return mlir::failure();
+			c.replaceAllUsesWith(coordVal);
+		}
+		for (comp::CoordOp c : coordsToLower) {
+			rewriter.eraseOp(c);
+		}
+
 		// 内联后，“旧 terminator”也会被搬进 newBody（位于 newYield 之前），删掉它
-		//（通常是 comp.yield / 自定义 terminator）
 		mlir::Operation *inlinedOldTerminator = newYield->getPrevNode();
 		if (inlinedOldTerminator && inlinedOldTerminator->hasTrait<mlir::OpTrait::IsTerminator>()) {
 			rewriter.eraseOp(inlinedOldTerminator);
