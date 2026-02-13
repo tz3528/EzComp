@@ -17,13 +17,13 @@ namespace ezcompile {
 
 void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 
-	// pm.addPass(createLowerCompDimPass());
 	pm.addPass(createLowerCompPointsPass());
 	pm.addPass(createLowerCompFieldPass());
 	pm.addPass(createLowerCompApplyInitPass());
 	pm.addPass(createLowerCompDirichletPass());
 	pm.addPass(createLowerCompForTimePass());
 	pm.addPass(createLowerCompUpdatePass());
+	pm.addPass(createLowerCompDimPass());
 
 }
 

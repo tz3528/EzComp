@@ -121,7 +121,7 @@ struct LowerCompForTimePass : mlir::PassWrapper<LowerCompForTimePass, mlir::Oper
 		mlir::RewritePatternSet patterns(context);
 		patterns.add<LowerForTimePattern>(context);
 
-		if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+		if (mlir::failed(applyPartialConversion(module, target, std::move(patterns)))) {
 			signalPassFailure();
 		}
 	}
