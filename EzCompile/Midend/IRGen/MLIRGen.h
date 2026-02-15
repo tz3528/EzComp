@@ -1,4 +1,4 @@
-//===-- MLIRGen.h ----------------------------------------------*- C++ -*-===//
+﻿//===-- MLIRGen.h ----------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -38,6 +38,7 @@ class ModuleOp;
 
 namespace ezcompile {
 
+/// MLIR代码生成器：将AST转换为Comp方言的MLIR IR
 class MLIRGen {
 
 	struct TimeLoopCtx;
@@ -48,12 +49,6 @@ public:
 
 	mlir::FailureOr<mlir::ModuleOp> mlirGen();
 
-	/**
-	 *	打印接口，默认输出所有ir
-	 * @param os 输出流，通常是llvm::errs()
-	 * @param op 要输出的操作，默认是IRModule
-	 * @param flags 打印选项
-	 */
 	void print(llvm::raw_ostream &os,
 	           mlir::Operation *op = nullptr,
 	           mlir::OpPrintingFlags flags = {}) const;
@@ -62,6 +57,7 @@ private:
 	//===--------------------------------------------------------------------===//
 	// 顶层：生成模块/Problem
 	//===--------------------------------------------------------------------===//
+	/// 生成顶层comp.problem操作
 	mlir::FailureOr<comp::ProblemOp> genProblem();
 
 	mlir::LogicalResult genDim();
@@ -124,14 +120,14 @@ private:
 	mlir::OpBuilder builder;
 	mlir::ModuleOp IRModule;
 
-	llvm::DenseMap<SymbolId, mlir::Value> dimIndexEnv;	// dim -> index value
-	llvm::DenseMap<SymbolId, mlir::Value> dimCoordEnv;	// dim -> f64 coord value
+	llvm::DenseMap<SymbolId, mlir::Value> dimIndexEnv;  // 维度 -> 索引值
+	llvm::DenseMap<SymbolId, mlir::Value> dimCoordEnv;  // 维度 -> 坐标值
 
-	std::map<ShiftInfo, mlir::Value> shiftInfoEnv;	// 每个偏移量都对应一个句柄
-
+	std::map<ShiftInfo, mlir::Value> shiftInfoEnv;  // Stencil偏移 -> sample操作缓存
 
 	llvm::StringMap<mlir::Value> eqValue;			// 根据函数的完整文本找到对应的句柄
 
+	/// 时间循环上下文
 	struct TimeLoopCtx {
 		comp::ForTimeOp loop;			// 循环操作符
 		mlir::Value atTime;				// 当前时刻

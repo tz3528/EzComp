@@ -1,4 +1,4 @@
-//===-- MLIRGen.cpp --------------------------------------------*- C++ -*-===//
+﻿//===-- MLIRGen.cpp --------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// MLIRGen用于将AST转换为comp方言
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,25 +18,25 @@
 namespace ezcompile {
 MLIRGen::MLIRGen(const ParsedModule& pm, mlir::MLIRContext& context)
 	: pm(pm), builder(&context), context(context) {
+	// 初始化 builder 和类型缓存（f64Ty 在整个生成过程中频繁使用）
 	sema = pm.sema.get();
 	f64Ty = builder.getF64Type();
 }
 
 mlir::FailureOr<mlir::ModuleOp> MLIRGen::mlirGen() {
-	// 初始化 IRModule
+	// 1. 创建 IRModule
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 	IRModule = mlir::ModuleOp::create(loc);
 
-	// 让 builder 从 module body 开头插入
 	mlir::OpBuilder::InsertionGuard guard(builder);
 	builder.setInsertionPointToStart(IRModule.getBody());
 
-	// 生成顶层 Problem
+	// 2. 生成 comp.problem 操作
 	auto problemOr = genProblem();
 	if (mlir::failed(problemOr))
 		return mlir::failure();
 
-	// 检查IRModule的约束
+	// 3. 验证生成的 IR 是否满足方言约束
 	if (mlir::failed(mlir::verify(IRModule))) {
 		IRModule.emitError() << "module verification failed";
 		return mlir::failure();
@@ -48,17 +48,15 @@ mlir::FailureOr<mlir::ModuleOp> MLIRGen::mlirGen() {
 void MLIRGen::print(llvm::raw_ostream& os,
                     mlir::Operation* op,
                     mlir::OpPrintingFlags flags) const {
-	// 默认打印所有的ir
 	if (!op) {
 		if (!IRModule) {
 			os << "<<MLIRGen: no module to print>>\n";
 			return;
 		}
 		mlir::ModuleOp module = IRModule;
-		op = module.getOperation(); //此操作是非const的，所以需要拷贝一份
+		op = module.getOperation();
 	}
 
-	// 使SSA命名更加简洁且本地化
 	flags.useLocalScope();
 
 	op->print(os, flags);
@@ -68,15 +66,14 @@ void MLIRGen::print(llvm::raw_ostream& os,
 mlir::FailureOr<comp::ProblemOp> MLIRGen::genProblem() {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
-	// -------- 0) 基本前置条件检查（避免空指针）--------
+	// 1. 前置条件检查（避免空指针）
 	if (!pm.sema) {
 		return mlir::emitError(loc, "internal error: missing SemanticResult");
 	}
 
-	// -------- 1) 在 module 顶层创建 comp.problem --------
+	// 2. 创建 comp.problem 操作并设置 options 属性
 	auto problem = comp::ProblemOp::create(builder, loc);
 
-	// 枚举选项表的内容作为problem的属性
 	const auto& opts = pm.sema->options;
 	for (const auto& opt : opts) {
 		auto key = opt.getKey().str();
@@ -93,29 +90,27 @@ mlir::FailureOr<comp::ProblemOp> MLIRGen::genProblem() {
 		}
 	}
 
-	// comp.problem 有一个 body region
 	mlir::Region& body = problem.getBody();
 	if (body.empty()) {
 		body.emplaceBlock();
 	}
 
-	// 之后的 dim/field/solve 都插到 problem body 里
 	mlir::OpBuilder::InsertionGuard guard(builder);
 	builder.setInsertionPointToStart(&body.front());
 
-	// -------- 2) 生成 dims --------
+	// 3. 生成维度定义（时间维 + 空间维）
 	if (mlir::failed(genDim())) {
 		return mlir::failure();
 	}
 
-	// -------- 3) 生成 field --------
+	// 4. 生成字段定义（绑定所有维度）
 	mlir::FailureOr<mlir::Value> fieldOr = genField();
 	if (mlir::failed(fieldOr)) {
 		return mlir::failure();
 	}
 	mlir::Value field = *fieldOr;
 
-	// -------- 4) 生成 solve --------
+	// 5. 生成求解流程（初始化 → 边界条件 → 时间步进）
 	if (mlir::failed(genSolve(field))) {
 		return mlir::failure();
 	}
@@ -126,6 +121,7 @@ mlir::FailureOr<comp::ProblemOp> MLIRGen::genProblem() {
 mlir::LogicalResult MLIRGen::genDim() {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
+	// 1. 生成时间维（标记为 timeVar）
 	{
 		auto sym = sema->st.get(sema->target.timeDim);
 		auto nameAttr = builder.getStringAttr(sym.name);
@@ -136,6 +132,7 @@ mlir::LogicalResult MLIRGen::genDim() {
 		comp::DimOp::create(builder, loc, nameAttr, lowerAttr, upperAttr, pointsAttr, timeVarAttr);
 	}
 
+	// 2. 生成所有空间维
 	for (const auto &id : sema->target.spaceDims) {
 		auto sym = sema->st.get(id);
 		auto nameAttr = builder.getStringAttr(sym.name);
@@ -236,9 +233,8 @@ mlir::LogicalResult MLIRGen::genApplyInit(mlir::Value field) {
 
 		const auto& anchor = ea.anchor;
 
-		// 构建 anchors 属性
 		llvm::SmallVector<mlir::Attribute, 4> anchors;
-		llvm::SmallDenseSet<SymbolId, 8> fixedDims; // 获取所有被固定的维度
+		llvm::SmallDenseSet<SymbolId, 8> fixedDims;
 
 		for (size_t i = 0; i < anchor.dim.size(); ++i) {
 			comp::AnchorAttr aa = comp::AnchorAttr::get(
@@ -250,16 +246,15 @@ mlir::LogicalResult MLIRGen::genApplyInit(mlir::Value field) {
 			fixedDims.insert(anchor.dim[i]);
 		}
 
+		// 初始化方程必须固定时间维度（确保是单时刻初始化）
 		if (!fixedDims.contains(meta.timeDim)) {
 			return mlir::emitError(loc, "In the initialization equation, timeVar must be fixed");
 		}
 
 		auto anchorsAttr = builder.getArrayAttr(anchors);
 
-		// 创建 comp.apply_init 操作
 		auto aiOp = comp::ApplyInitOp::create(builder, loc, field, anchorsAttr);
 
-		// 获取并设置 region
 		mlir::Region& aiRegion = aiOp.getRegion();
 		mlir::Block& entry = aiRegion.emplaceBlock();
 
@@ -268,7 +263,6 @@ mlir::LogicalResult MLIRGen::genApplyInit(mlir::Value field) {
 			if (!fixedDims.contains(d)) freeDims.push_back(d);
 		}
 
-		// 没被固定的维度需要嵌套循环枚举
 		llvm::SmallVector<mlir::Value, 4> freeIdxArgs;
 		for (size_t k = 0; k < freeDims.size(); ++k) {
 			freeIdxArgs.push_back(entry.addArgument(idxTy, loc));
@@ -296,7 +290,6 @@ mlir::LogicalResult MLIRGen::genApplyInit(mlir::Value field) {
 			dimCoordEnv[d] = comp::CoordOp::create(builder, loc, f64Ty, mkDimRef(d), cix);
 		}
 
-		// 生成 RHS（边界值表达式）
 		auto valueOr = genExpr(ea.eq->getRHS());
 		if (mlir::failed(valueOr)) return mlir::failure();
 		if (mlir::failed(emitYield(loc, *valueOr))) return mlir::failure();
@@ -328,11 +321,15 @@ mlir::LogicalResult MLIRGen::genDirichlet(mlir::Value field) {
 			fixedDims.insert(anchor.dim[i]);
 		}
 
+		// 边界条件必须至少固定一个空间维度（否则是内点方程）
+		if (fixedDims.empty() || !llvm::any_of(meta.spaceDims, [&](SymbolId d) { return fixedDims.contains(d); })) {
+			return mlir::emitError(loc, "boundary condition must fix at least one space dimension");
+		}
+
 		auto anchorsAttr = builder.getArrayAttr(anchors);
 
 		auto dOp = comp::DirichletOp::create(builder, loc, field, anchorsAttr);
 
-		// 获取并设置 region
 		mlir::Region& dRegion = dOp.getRegion();
 		mlir::Block& entry = dRegion.emplaceBlock();
 
@@ -371,7 +368,6 @@ mlir::LogicalResult MLIRGen::genDirichlet(mlir::Value field) {
 			dimCoordEnv[d] = comp::CoordOp::create(builder, loc, f64Ty, mkDimRef(d), cix);
 		}
 
-		// 生成 RHS（边界值表达式）
 		auto valueOr = genExpr(ea.eq->getRHS());
 		if (mlir::failed(valueOr)) return mlir::failure();
 		if (mlir::failed(emitYield(loc, *valueOr))) return mlir::failure();
@@ -388,6 +384,7 @@ mlir::LogicalResult MLIRGen::genForTime(mlir::Value field, mlir::Value timePoint
 
 	mlir::Value ub = mlir::arith::SubIOp::create(builder, loc, timePoints, c1);
 
+	// 1. 创建时间循环（从 0 到 timePoints-1）
 	auto forOp = comp::ForTimeOp::create(builder, loc, c0, ub, c1);
 
 	mlir::Region& r = forOp.getBody();
@@ -396,6 +393,7 @@ mlir::LogicalResult MLIRGen::genForTime(mlir::Value field, mlir::Value timePoint
 	body->addArgument(builder.getIndexType(), loc);
 	auto tctx = TimeLoopCtx::makeTimeLoopCtx(forOp);
 
+	// 2. 在循环体内生成空间点更新
 	{
 		mlir::OpBuilder::InsertionGuard guard(builder);
 		builder.setInsertionPointToStart(body);
@@ -444,7 +442,7 @@ mlir::LogicalResult MLIRGen::genUpdate(mlir::Value field, TimeLoopCtx tctx) {
 
 	builder.setInsertionPointToStart(bb);
 
-	// 这里存起来每个变量下标和值的句柄
+	// 2. 为每个空间维度添加索引参数（用于 stencil 采样）
 	for (size_t i = 0; i < sema->target.spaceDims.size(); ++i) {
 		bb->addArgument(builder.getIndexType(), loc);
 		auto id = sema->target.spaceDims[i];
@@ -452,13 +450,12 @@ mlir::LogicalResult MLIRGen::genUpdate(mlir::Value field, TimeLoopCtx tctx) {
 		dimCoordEnv[id] = comp::CoordOp::create(builder, loc, f64Ty, mkDimRef(id), bb->getArgument(i));
 	}
 
-	// sample
+	// 3. 生成 stencil 采样
 	if (mlir::failed(genSample(field))) {
 		return mlir::failure();
 	}
 
-
-	// expr
+	// 4. 生成方程表达式和 yield
 	mlir::Value ans;
 	for (auto eq : sema->egs.iter) {
 		const ExprAST *lhs = eq->getLHS();
@@ -483,7 +480,7 @@ mlir::LogicalResult MLIRGen::genUpdate(mlir::Value field, TimeLoopCtx tctx) {
 mlir::LogicalResult MLIRGen::genSample(mlir::Value field) {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
-	// 这里考虑后面可能有多阶段求解，Sample会多次复用
+	// 清空采样缓存（支持多阶段求解）
 	shiftInfoEnv.clear();
 
 	auto fieldTy = mlir::dyn_cast<comp::FieldType>(field.getType());
@@ -492,6 +489,7 @@ mlir::LogicalResult MLIRGen::genSample(mlir::Value field) {
 	}
 	mlir::Type elemTy = fieldTy.getElementType();
 
+	// 为每个 stencil 模式生成采样操作（记录在 shiftInfoEnv 中）
 	for (auto& info : sema->stencil_info.shift_infos) {
 		llvm::SmallVector<mlir::Value, 4> indices;
 		llvm::SmallVector<mlir::Attribute, 4> dims;
@@ -583,6 +581,7 @@ mlir::FailureOr<mlir::Value> MLIRGen::genUnaryExpr(const UnaryExprAST* expr) {
 
 	char op = expr->getOp();
 
+	// 一元运算符：'+' 直接返回，'-' 需要生成取反操作
 	if (op == '+') {
 		return value;
 	}
@@ -632,7 +631,7 @@ mlir::FailureOr<mlir::Value> MLIRGen::genBinaryExpr(const BinaryExprAST* expr) {
 		return llvm::isa<mlir::FloatType>(t);
 	};
 
-	// 两侧存在浮点数，要将Int转换为浮点数
+	// 类型转换策略：任一侧为浮点数时，将两侧都转为浮点数
 	if (isFloat(lhsTy) || isFloat(rhsTy)) {
 		mlir::FloatType fTy = (isFloat(lhsTy)) ? llvm::cast<mlir::FloatType>(lhsTy) : llvm::cast<mlir::FloatType>(rhsTy);
 
@@ -682,7 +681,7 @@ mlir::FailureOr<mlir::Value> MLIRGen::genBinaryExpr(const BinaryExprAST* expr) {
 		return emitError(expr->getBeginLoc(), "binary op: operands must be numeric");
 	}
 
-	// 到此两端都为整型
+	// 类型转换策略：Index 和 i64 之间自动转换
 	if (lhsTy != rhsTy) {
 		if (llvm::isa<mlir::IndexType>(lhsTy) && llvm::isa<mlir::IntegerType>(rhsTy)) {
 			rhs = mlir::arith::IndexCastOp::create(builder, loc, lhsTy, rhs);
@@ -713,6 +712,10 @@ mlir::FailureOr<mlir::Value> MLIRGen::genCallExpr(const CallExprAST* expr) {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
 	auto name = expr->getCallee().str();
+
+	// 1. 如果是目标函数调用，返回预先计算的 stencil 采样值
+	// 2. 如果是中间变量引用，返回缓存的计算结果
+	// 3. 否则生成外部函数调用
 	if (name == sema->target.func) {
 		auto shift_info = sema->stencil_info.call_info.find(expr)->second;
 		return shiftInfoEnv[shift_info];
