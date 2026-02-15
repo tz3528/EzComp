@@ -450,6 +450,18 @@ void Semantic::checkShiftInfo(const ExprAST* expr, SymbolTable& st, TargetFuncti
 				info.offset.emplace_back(0);
 			}
 		}
+
+		// 这里把时间变量作为第一个偏移信息
+		for (size_t i = 0; i < info.dim.size(); i++) {
+			if (info.dim[i] == target.timeDim) {
+				while (i > 0) {
+					std::swap(info.dim[i - 1], info.dim[i]);
+					std::swap(info.offset[i - 1], info.offset[i]);
+					i--;
+				}
+				break;
+			}
+		}
 		
 		// 记录该函数调用的完整偏移信息
 		stencil_info.call_info.emplace(call, info);

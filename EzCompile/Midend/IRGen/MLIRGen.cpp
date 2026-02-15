@@ -400,8 +400,6 @@ mlir::LogicalResult MLIRGen::genForTime(mlir::Value field, mlir::Value timePoint
 		mlir::OpBuilder::InsertionGuard guard(builder);
 		builder.setInsertionPointToStart(body);
 
-		tctx.writeTime = mlir::arith::AddIOp::create(builder, loc, tctx.atTime, c1);
-
 		dimIndexEnv.clear();
 		dimCoordEnv.clear();
 		auto tid = sema->target.timeDim;
@@ -438,7 +436,7 @@ mlir::LogicalResult MLIRGen::genUpdate(mlir::Value field, TimeLoopCtx tctx) {
 	}
 	mlir::ArrayAttr overAttr = builder.getArrayAttr(ranges);
 
-	auto updateOp = comp::UpdateOp::create(builder, loc, field, tctx.atTime, tctx.writeTime, overAttr);
+	auto updateOp = comp::UpdateOp::create(builder, loc, field, tctx.atTime, overAttr);
 
 	mlir::Region& body = updateOp.getBody();
 	auto* bb = new mlir::Block();

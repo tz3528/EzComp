@@ -23,6 +23,11 @@ void registerLowerCompFieldPass();
 void registerLowerCompPointsPass();
 void registerLowerCompApplyInitPass();
 void registerLowerCompForTimePass();
+void registerLowerCompDirichletPass();
+void registerLowerCompUpdatePass();
+void registerLowerCompDimPass();
+void registerLowerCompProblemPass();
+void registerLowerCompCallPass();
 
 inline void registerPasses() {
 	registerLowerCompDimPass();
@@ -30,6 +35,11 @@ inline void registerPasses() {
 	registerLowerCompPointsPass();
 	registerLowerCompApplyInitPass();
 	registerLowerCompForTimePass();
+	registerLowerCompDirichletPass();
+	registerLowerCompUpdatePass();
+	registerLowerCompDimPass();
+	registerLowerCompProblemPass();
+	registerLowerCompCallPass();
 }
 
 }

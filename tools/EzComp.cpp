@@ -26,6 +26,8 @@
 #include "EzCompile/Frontend/include/AST.h"
 #include "EzCompile/Frontend/include/Semantic/Semantic.h"
 #include "IRGen/MLIRGen.h"
+#include "mlir/Dialect/Func/IR/FuncOpsDialect.h.inc"
+#include "mlir/Dialect/Math/IR/MathOpsDialect.h.inc"
 #include "Transforms/Pipelines.h"
 #include "Transforms/Passes.h"
 
@@ -121,9 +123,10 @@ static int dumpMLIR() {
     mlir::MLIRContext context;
 
     context.getOrLoadDialect<comp::CompDialect>();
-    context.getOrLoadDialect<mlir::arith::ArithDialect>();
-    context.getOrLoadDialect<mlir::memref::MemRefDialect>();
     context.getOrLoadDialect<mlir::affine::AffineDialect>();
+    context.getOrLoadDialect<mlir::arith::ArithDialect>();
+    context.getOrLoadDialect<mlir::math::MathDialect>();
+    context.getOrLoadDialect<mlir::memref::MemRefDialect>();
 
     MLIRGen gen(*parse_module, context);
     auto mo = gen.mlirGen();
@@ -134,8 +137,15 @@ static int dumpMLIR() {
 
     if (passPipeline.hasAnyOccurrences()) {
         mlir::PassManager pm(&context);
-        PipelineOptions po;
-        buildPipeline(pm, po);
+
+        auto errHandler = [&](const llvm::Twine &msg) -> mlir::LogicalResult {
+            llvm::errs() << "Failed to parse/add pass pipeline: " << msg << "\n";
+            return mlir::failure();
+        };
+
+        if (mlir::failed(passPipeline.addToPipeline(pm, errHandler))) {
+            return 3;
+        }
 
         if (mlir::failed(pm.run(*mo))) {
             llvm::errs() << "Pipeline failed\n";
@@ -155,6 +165,8 @@ int main(int argc, char **argv) {
     // Register any command line options.
     mlir::registerAsmPrinterCLOptions();
     mlir::registerMLIRContextCLOptions();
+    registerPasses();
+    registerPipelines();
     cl::ParseCommandLineOptions(argc, argv, "comp compiler\n");
 
     switch (emitAction) {

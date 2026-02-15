@@ -211,7 +211,6 @@ def UpdateOp : Comp_Op<"update"> {
     let arguments = (ins
         Comp_FieldType:$field,
         Index:$atTime,
-        Index:$writeTime,
         ArrayAttr:$over
     );
 
@@ -220,7 +219,7 @@ def UpdateOp : Comp_Op<"update"> {
     // 因此这里不对它们做约束。
     let regions = (region SizedRegion<1>:$body);
 
-    let assemblyFormat = "$field `atTime` `=` $atTime `writeTime` `=` $writeTime `over` `=` $over $body attr-dict `:` type($field)";
+    let assemblyFormat = "$field `atTime` `=` $atTime `over` `=` $over $body attr-dict `:` type($field)";
 
     let hasVerifier = 1; // body 必须 `comp.yield` 且恰好产出 1 个值。
 }

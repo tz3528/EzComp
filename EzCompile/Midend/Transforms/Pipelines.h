@@ -24,10 +24,9 @@
 namespace ezcompile {
 
 /// Pipeline 选项
-struct PipelineOptions
-	: mlir::PassPipelineOptions<PipelineOptions> {
+struct PipelineOptions : mlir::PassPipelineOptions<PipelineOptions> {
 
-	Option<bool> enableCanonicalize{
+	Option<bool> enableLowerToBase{
 		*this, "comp-base",
 		llvm::cl::desc("Run canonicalize passes between lowering stages"),
 		llvm::cl::init(false)};
@@ -43,6 +42,11 @@ std::unique_ptr<mlir::Pass> createLowerCompFieldPass();
 std::unique_ptr<mlir::Pass> createLowerCompPointsPass();
 std::unique_ptr<mlir::Pass> createLowerCompApplyInitPass();
 std::unique_ptr<mlir::Pass> createLowerCompForTimePass();
+std::unique_ptr<mlir::Pass> createLowerCompDirichletPass();
+std::unique_ptr<mlir::Pass> createLowerCompUpdatePass();
+std::unique_ptr<mlir::Pass> createLowerCompSolvePass();
+std::unique_ptr<mlir::Pass> createLowerCompProblemPass();
+std::unique_ptr<mlir::Pass> createLowerCompCallPass();
 
 }
 
