@@ -33,6 +33,21 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 		pm.addPass(mlir::createCSEPass());           // 公共子表达式消除
 	}
 
+	if (opt.enableAffineToSCF.getValue() || opt.enableToLLVM.getValue()) {
+		pm.addPass(mlir::createLowerAffinePass());
+		pm.addPass(mlir::createCanonicalizerPass());
+	}
+
+	if (opt.enableSCFToCF.getValue() || opt.enableToLLVM.getValue()) {
+		pm.addPass(mlir::createSCFToControlFlowPass());
+		pm.addPass(mlir::createCanonicalizerPass());
+	}
+
+	if (opt.enableToLLVM.getValue()) {
+		pm.addPass(mlir::createConvertToLLVMPass());
+		pm.addPass(mlir::createCanonicalizerPass());
+	}
+
 }
 
 void registerPipelines() {

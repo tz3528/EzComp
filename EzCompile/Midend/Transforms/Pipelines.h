@@ -16,6 +16,9 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Transforms/Passes.h"
@@ -30,6 +33,22 @@ struct PipelineOptions : mlir::PassPipelineOptions<PipelineOptions> {
 		*this, "comp-base",
 		llvm::cl::desc("Run canonicalize passes between lowering stages"),
 		llvm::cl::init(false)};
+
+	Option<bool> enableAffineToSCF{
+		*this, "affine-scf",
+		llvm::cl::desc("Lower Affine dialect to SCF dialect"),
+		llvm::cl::init(false)};
+
+	Option<bool> enableSCFToCF{
+		*this, "scf-cf",
+		llvm::cl::desc("Lower SCF dialect to ControlFlow dialect"),
+		llvm::cl::init(false)};
+
+	Option<bool> enableToLLVM{
+		*this, "base-llvm",
+		llvm::cl::desc("Lower Math, Arith, MemRef, and CF to LLVM dialect"),
+		llvm::cl::init(false)};
+
 
 };
 
@@ -47,6 +66,7 @@ std::unique_ptr<mlir::Pass> createLowerCompUpdatePass();
 std::unique_ptr<mlir::Pass> createLowerCompSolvePass();
 std::unique_ptr<mlir::Pass> createLowerCompProblemPass();
 std::unique_ptr<mlir::Pass> createLowerCompCallPass();
+std::unique_ptr<mlir::Pass> createCleanupUnrealizedCastPass();
 
 }
 

@@ -28,10 +28,28 @@ target_link_libraries(ezcomp PRIVATE
         MLIRPass
         MLIRTransforms
 
+        # --- 方言库 ---
         MLIRAffineDialect
         MLIRArithDialect
+        MLIRControlFlowDialect
+        MLIRFuncDialect
+        MLIRLLVMDialect
         MLIRMathDialect
         MLIRMemRefDialect
+        MLIRSCFDialect
+        MLIRUBDialect
+
+        # --- 转换库 ---
+        MLIRAffineToStandard
+        MLIRArithToLLVM
+        MLIRControlFlowToLLVM
+        MLIRConvertToLLVMPass
+        MLIRFuncToLLVM
+        MLIRMathToLLVM
+        MLIRMemRefToLLVM
+        MLIRRegisterAllExtensions
+        MLIRSCFToControlFlow
+        MLIRUBToLLVM
 )
 
 # 4. 设置 RPATH (确保运行时能找到动态库)

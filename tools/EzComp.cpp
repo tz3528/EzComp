@@ -16,9 +16,17 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
+#include "mlir/InitAllExtensions.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
@@ -26,8 +34,6 @@
 #include "EzCompile/Frontend/include/AST.h"
 #include "EzCompile/Frontend/include/Semantic/Semantic.h"
 #include "IRGen/MLIRGen.h"
-#include "mlir/Dialect/Func/IR/FuncOpsDialect.h.inc"
-#include "mlir/Dialect/Math/IR/MathOpsDialect.h.inc"
 #include "Transforms/Pipelines.h"
 #include "Transforms/Passes.h"
 
@@ -120,13 +126,23 @@ static int dumpMLIR() {
         return 1;
 
     auto parse_module = moduleAST.get();
-    mlir::MLIRContext context;
 
+    mlir::DialectRegistry registry;
+    mlir::registerAllExtensions(registry);
+
+    mlir::MLIRContext context(registry);
+
+    // 加载所有需要的方言
     context.getOrLoadDialect<comp::CompDialect>();
     context.getOrLoadDialect<mlir::affine::AffineDialect>();
     context.getOrLoadDialect<mlir::arith::ArithDialect>();
     context.getOrLoadDialect<mlir::math::MathDialect>();
     context.getOrLoadDialect<mlir::memref::MemRefDialect>();
+    context.getOrLoadDialect<mlir::scf::SCFDialect>();
+    context.getOrLoadDialect<mlir::cf::ControlFlowDialect>();
+    context.getOrLoadDialect<mlir::func::FuncDialect>();
+    context.getOrLoadDialect<mlir::LLVM::LLVMDialect>();
+    context.getOrLoadDialect<mlir::ub::UBDialect>();
 
     MLIRGen gen(*parse_module, context);
     auto mo = gen.mlirGen();
