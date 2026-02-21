@@ -18,7 +18,10 @@
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/AsmState.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
@@ -127,6 +130,9 @@ static int dumpMLIR() {
     context.getOrLoadDialect<mlir::arith::ArithDialect>();
     context.getOrLoadDialect<mlir::math::MathDialect>();
     context.getOrLoadDialect<mlir::memref::MemRefDialect>();
+    context.getOrLoadDialect<mlir::scf::SCFDialect>();
+    context.getOrLoadDialect<mlir::cf::ControlFlowDialect>();
+    context.getOrLoadDialect<mlir::func::FuncDialect>();
 
     MLIRGen gen(*parse_module, context);
     auto mo = gen.mlirGen();
