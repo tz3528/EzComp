@@ -17,6 +17,7 @@ target_link_libraries(Midend PUBLIC Frontend)
 target_link_libraries(Midend PUBLIC
         MLIRIR
         MLIRSupport
+        MLIRConvertToLLVMPass
 )
 
 # 收集头文件

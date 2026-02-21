@@ -43,10 +43,10 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 		pm.addPass(mlir::createCanonicalizerPass());
 	}
 
-	// if (opt.enableToLLVM.getValue()) {
-	// 	pm.addPass(mlir::createConvertToLLVMPass());
-	// 	pm.addPass(mlir::createCanonicalizerPass());
-	// }
+	if (opt.enableToLLVM.getValue()) {
+		pm.addPass(mlir::createConvertToLLVMPass());
+		pm.addPass(mlir::createCanonicalizerPass());
+	}
 
 }
 
