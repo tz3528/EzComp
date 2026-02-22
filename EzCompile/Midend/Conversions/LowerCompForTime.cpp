@@ -1,4 +1,4 @@
-﻿//===-- LowerCompForTime.cpp -----------------------------------*- C++ -*-===//
+//===-- LowerCompForTime.cpp -----------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// comp.for_time 降级实现
+// 将时间循环操作降级为 Affine 循环
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,21 +25,25 @@
 
 namespace ezcompile {
 
+/// 降级 Pattern：将 comp.for_time 转换为 affine.for
+///
+/// 实现思路：
+/// 1. 从操作数获取 lb、ub、step
+/// 2. 创建 affine.for，将原循环体内联进去
+/// 3. 降级循环体内的 coord 操作
 struct LowerForTimePattern : mlir::OpConversionPattern<comp::ForTimeOp> {
 	using OpConversionPattern<comp::ForTimeOp>::OpConversionPattern;
 
 	mlir::LogicalResult matchAndRewrite(comp::ForTimeOp op,
 	                              OpAdaptor adaptor,
 	                              mlir::ConversionPatternRewriter& rewriter) const override {
-		// 1. 获取并验证 Step (步长)
-		// affine.for 要求步长必须是 int64_t 常量。
+		// 获取步长（必须是常量）
 		mlir::APInt stepInt;
 		if (!matchPattern(adaptor.getStep(), mlir::m_ConstantInt(&stepInt))) {
 			return rewriter.notifyMatchFailure(op, "step operand is not a constant integer");
 		}
 		int64_t step = stepInt.getSExtValue();
 
-		// 2. 获取 Lower 和 Upper Bounds
 		mlir::Value lb = adaptor.getLb();
 		mlir::Value ub = adaptor.getUb();
 
@@ -46,7 +51,6 @@ struct LowerForTimePattern : mlir::OpConversionPattern<comp::ForTimeOp> {
 			return rewriter.notifyMatchFailure(op, "bounds must be of index type");
 		}
 
-		// 3. 创建 affine.for
 		mlir::Location loc = op.getLoc();
 		auto affineFor = mlir::affine::AffineForOp::create(rewriter,
 			loc,
@@ -55,18 +59,17 @@ struct LowerForTimePattern : mlir::OpConversionPattern<comp::ForTimeOp> {
 			step
 		);
 
-		// 4. 迁移循环体
+		// 内联循环体
 		mlir::Block* oldBody =  &op.getBody().front();
 		mlir::Block* newBody = affineFor.getBody();
 
-		// 准备参数重映射：将 oldBody 的 IV (%arg0) 映射到 newBody 的 IV
 		mlir::SmallVector<mlir::Value, 1> newArgs;
 		newArgs.push_back(newBody->getArgument(0));
 
-		// newBody 创建时自带 affine.yield，把旧 body 内联到该 yield 之前
 		mlir::Operation *newYield = newBody->getTerminator();
 		rewriter.inlineBlockBefore(oldBody, newBody, newYield->getIterator(), newArgs);
 
+		// 降级 coord
 		mlir::Operation* cur = &newBody->front();
 		rewriter.setInsertionPointAfter(cur);
 		mlir::Operation* end = &newBody->back();
@@ -79,7 +82,7 @@ struct LowerForTimePattern : mlir::OpConversionPattern<comp::ForTimeOp> {
 		}
 
 		for (comp::CoordOp c : coordsToLower) {
-			mlir::Value iv = c.getIv(); // 已通过内联 argValues 替换
+			mlir::Value iv = c.getIv();
 			mlir::Value coordVal = lowerCoord(rewriter, c.getLoc(), op, c.getDimAttr(), iv);
 			if (!coordVal) return mlir::failure();
 			c.replaceAllUsesWith(coordVal);
@@ -88,13 +91,12 @@ struct LowerForTimePattern : mlir::OpConversionPattern<comp::ForTimeOp> {
 			rewriter.eraseOp(c);
 		}
 
-		// 内联后，“旧 terminator”也会被搬进 newBody（位于 newYield 之前），删掉它
+		// 删除内联进来的旧终结符
 		mlir::Operation *inlinedOldTerminator = newYield->getPrevNode();
 		if (inlinedOldTerminator && inlinedOldTerminator->hasTrait<mlir::OpTrait::IsTerminator>()) {
 			rewriter.eraseOp(inlinedOldTerminator);
 		}
 
-		// 5. 替换原 Op
 		rewriter.replaceOp(op, affineFor.getResults());
 		return mlir::success();
 	}
@@ -115,9 +117,7 @@ struct LowerCompForTimePass : mlir::PassWrapper<LowerCompForTimePass, mlir::Oper
 
 		mlir::ConversionTarget target(*context);
 
-		// 标记 Affine, Arith 为合法
 		target.addLegalDialect<mlir::affine::AffineDialect, mlir::arith::ArithDialect>();
-		// 标记 comp.for_time 为非法，强制框架对其进行转换
 		target.addIllegalOp<comp::ForTimeOp>();
 
 		mlir::RewritePatternSet patterns(context);
@@ -137,4 +137,4 @@ std::unique_ptr<mlir::Pass> createLowerCompForTimePass() {
 	return std::make_unique<LowerCompForTimePass>();
 }
 
-}
+} // namespace ezcompile

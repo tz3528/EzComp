@@ -1,4 +1,4 @@
-﻿//===-- LowerCompDim.cpp ----------------------------------------*- C++ -*-===//
+//===-- LowerCompDim.cpp --------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// comp.dim 降级实现
+// 将维度声明操作降级为常量定义
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,13 +24,17 @@
 
 namespace ezcompile {
 
+/// 降级 Pattern：删除 comp.dim 操作
+///
+/// 实现思路：
+/// comp.dim 的信息（lower/upper/points）已在前置 Pass 中被其他操作引用，
+/// 此处只需删除该操作即可。
 struct LowerDimPattern : mlir::OpConversionPattern<comp::DimOp> {
 	using OpConversionPattern<comp::DimOp>::OpConversionPattern;
 
 	mlir::LogicalResult matchAndRewrite(comp::DimOp op,
 	                              OpAdaptor adaptor,
 	                              mlir::ConversionPatternRewriter& rewriter) const override {
-		// 对于dim而言，已经为所有其它操作提供过了信息，不再需要生成其它信息
 		rewriter.eraseOp(op);
 		return mlir::success();
 	}
@@ -70,4 +75,4 @@ std::unique_ptr<mlir::Pass> createLowerCompDimPass() {
 	return std::make_unique<LowerCompDimPass>();
 }
 
-}
+} // namespace ezcompile

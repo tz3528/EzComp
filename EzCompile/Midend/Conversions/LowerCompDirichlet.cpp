@@ -6,7 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// comp.dirichlet 降级实现
+// 将 Dirichlet 边界条件降级为两处赋值：
+// - ForTime 之前：初始化边界
+/// - ForTime 内部：每时间步更新边界
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,6 +28,13 @@
 
 namespace ezcompile {
 
+/// 降级 Pattern：将 comp.dirichlet 转换为边界赋值代码
+///
+/// 实现思路：
+/// 1. 解析锚点，区分固定维度和自由维度
+/// 2. 在 ForTime 之前插入初始边界赋值（time=0）
+/// 3. 在 ForTime 内部插入每时间步的边界更新
+/// 4. 使用 clone 而非 inline 避免重复释放问题
 struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
 	using OpConversionPattern<comp::DirichletOp>::OpConversionPattern;
 
@@ -34,8 +44,6 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
 		mlir::Location loc = op.getLoc();
 		mlir::Block& srcBlock = op.getRhs().front();
 
-		// 1. 收集memref、for_time和update
-		auto field = op.getField();
 		mlir::memref::AllocOp alloc = getDefiningFieldOp(op.getField());
 		if (!alloc) {
 			return rewriter.notifyMatchFailure(op, "field is not backed by memref.alloc");
@@ -46,10 +54,11 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
 			return rewriter.notifyMatchFailure(op, "field alloc is not a memref");
 		}
 
+		// 查找关联的 ForTime 和 Update
 		comp::ForTimeOp for_time;
 		comp::UpdateOp update;
 
-		for (mlir::Operation *user : field.getUsers()) {
+		for (mlir::Operation *user : op.getField().getUsers()) {
 			if (auto u = mlir::dyn_cast<comp::UpdateOp>(user)) {
 				update = u;
 				break;
@@ -57,7 +66,7 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
 		}
 		for_time = update->getParentOfType<comp::ForTimeOp>();
 
-		// 2. 分析和存储锚点信息及属性
+		// 解析锚点
 		mlir::DenseMap<mlir::Attribute, uint64_t> fixed;
 		for (mlir::Attribute a : op.getAnchors()) {
 			auto anc = dyn_cast<comp::AnchorAttr>(a);
@@ -79,21 +88,17 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
 			dims.emplace_back(sym);
 		});
 
-		// memref 的秩应为 1(time)+N(space)
 		if (unfixedDims.size() + fixed.size() != memrefTy.getRank()) {
 			op.emitError() << "space dims count (" << unfixedDims.size()
 				<< ") does not match memref rank (" << (memrefTy.getRank() - 1) << ")";
 			return mlir::failure();
 		}
 
-		// =========================================================================
-        // 核心辅助函数：在当前插入点克隆并生成计算逻辑
-        // 使用 clone 而不是 inline，解决 double-free 问题
-        // =========================================================================
+		// 核心函数：克隆并生成计算逻辑
         auto emitCalculationLogic = [&](mlir::DenseMap<mlir::Attribute, mlir::Value>& currentDimIndices) -> mlir::LogicalResult {
-            mlir::IRMapping mapper; // 用于映射原 Block 的值到新克隆的值
+            mlir::IRMapping mapper;
 
-            // 映射 Block Arguments (Coord getIv() 获取的值)
+            // 映射 Block Arguments
             for (mlir::Operation& inner : srcBlock.getOperations()) {
                 if (auto coord = dyn_cast<comp::CoordOp>(inner)) {
                     mlir::Value iv = coord.getIv();
@@ -108,16 +113,12 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
                 }
             }
 
-            // 克隆 Op (跳过 CoordOp 和 YieldOp 的特殊处理)
+            // 克隆 Op（coord 特殊处理）
             for (mlir::Operation &opInst : srcBlock.without_terminator()) {
                 if (auto coord = dyn_cast<comp::CoordOp>(opInst)) {
-                    // 特殊处理 CoordOp：不要克隆它，而是计算出它的值
                     mlir::Value mappedIv = mapper.lookupOrDefault(coord.getIv());
-
                     mlir::Value coordVal = lowerCoord(rewriter, coord.getLoc(), op, coord.getDimAttr(), mappedIv);
                     if (!coordVal) return mlir::failure();
-
-                    // 将原 CoordOp 的结果映射到新计算的值
                     mapper.map(coord.getResult(), coordVal);
                 } else {
                     rewriter.clone(opInst, mapper);
@@ -128,23 +129,20 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
             if (auto yieldOp = dyn_cast<comp::YieldOp>(srcBlock.getTerminator())) {
                 if (yieldOp.getNumOperands() != 1) return mlir::failure();
 
-                // 获取 yield 的值 (通过 mapper 解析)
                 mlir::Value yieldedVal = mapper.lookupOrDefault(yieldOp.getOperand(0));
                 mlir::Value yieldedF64 = castToF64(rewriter, yieldOp.getLoc(), yieldedVal);
 
-                // 准备 Store 的下标
                 mlir::SmallVector<mlir::Value, 8> storeIndices;
                 for (auto d : dims) {
                     storeIndices.push_back(currentDimIndices.lookup(d));
                 }
 
-                // 生成 Store
                 rewriter.create<mlir::memref::StoreOp>(yieldOp.getLoc(), yieldedF64, memref, storeIndices);
             }
             return mlir::success();
         };
 
-        // 辅助递归函数：构建空间循环嵌套
+        // 递归构建循环嵌套
         std::function<mlir::LogicalResult(int, mlir::DenseMap<mlir::Attribute, mlir::Value>&)> buildLoopNest =
             [&](int dimIdx, mlir::DenseMap<mlir::Attribute, mlir::Value>& indicesMap) -> mlir::LogicalResult {
             if (dimIdx >= unfixedDims.size()) {
@@ -156,18 +154,17 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
             auto points = static_cast<int64_t>(dimOp.getPoints());
 
             auto forOp = rewriter.create<mlir::affine::AffineForOp>(loc, 0, points, 1);
-            indicesMap[d] = forOp.getInductionVar(); // 记录当前维度的 IV
+            indicesMap[d] = forOp.getInductionVar();
 
             rewriter.setInsertionPointToStart(forOp.getBody());
             return buildLoopNest(dimIdx + 1, indicesMap);
         };
 
-		// 3. 第一处插入：ForTime 之前 (初始化边界)
+		// 第一处：ForTime 之前（初始化边界）
         {
             rewriter.setInsertionPoint(for_time);
             mlir::DenseMap<mlir::Attribute, mlir::Value> dimIndexVal;
 
-            // 固定维度
             for (auto& kv : fixed) {
                 if (auto d = dyn_cast<mlir::FlatSymbolRefAttr>(kv.first))
                     dimIndexVal[d] = constIndex(rewriter, loc, kv.second);
@@ -178,27 +175,24 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
             if (mlir::failed(buildLoopNest(0, dimIndexVal))) return mlir::failure();
         }
 
-        // 4. 第二处插入：ForTime 内部 (更新边界)
+        // 第二处：ForTime 内部（更新边界）
         {
             mlir::Block *bodyBlock = &for_time.getRegion().front();
             rewriter.setInsertionPointToEnd(bodyBlock);
 
             mlir::DenseMap<mlir::Attribute, mlir::Value> dimIndexVal;
 
-            // 固定维度
             for (auto& kv : fixed) {
                 if (auto d = dyn_cast<mlir::FlatSymbolRefAttr>(kv.first))
                     dimIndexVal[d] = constIndex(rewriter, loc, kv.second);
             }
 
 			mlir::Value timeIV = bodyBlock->getArgument(0);
-
             dimIndexVal[time_var] = modIndex(rewriter, loc, timeIV, 2);
 
             if (mlir::failed(buildLoopNest(0, dimIndexVal))) return mlir::failure();
         }
 
-		// 5. 删除原操作
 		rewriter.eraseOp(op);
 		return mlir::success();
 	}
@@ -219,9 +213,7 @@ struct LowerCompDirichletPass : mlir::PassWrapper<LowerCompDirichletPass, mlir::
 
 		mlir::ConversionTarget target(*context);
 
-		// 标记 Affine, Arith 为合法
 		target.addLegalDialect<mlir::affine::AffineDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect>();
-		// 标记 comp.for_time 为非法，强制框架对其进行转换
 		target.addIllegalOp<comp::DirichletOp>();
 
 		mlir::RewritePatternSet patterns(context);
@@ -241,4 +233,4 @@ std::unique_ptr<mlir::Pass> createLowerCompDirichletPass() {
 	return std::make_unique<LowerCompDirichletPass>();
 }
 
-}
+} // namespace ezcompile

@@ -1,4 +1,4 @@
-﻿//===-- LowerCompPoints.cpp -------------------------------------*- C++ -*-===//
+//===-- LowerCompPoints.cpp -------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 将points操作降级为arith
+// comp.points 降级实现
+// 将网格点数操作降级为 arith.constant
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,7 +22,11 @@
 
 namespace ezcompile {
 
-/// comp.points @t : index  => arith.constant <Nt> : index
+/// 降级 Pattern：comp.points @dim -> arith.constant <points>
+///
+/// 实现思路：
+/// 通过符号引用查找对应的 comp.dim，获取其 points 属性，
+/// 替换为常量索引值。
 struct PointsOpLowering : mlir::OpConversionPattern<comp::PointsOp> {
 	PointsOpLowering(mlir::TypeConverter& tc, mlir::MLIRContext* ctx, mlir::SymbolTableCollection& st)
 		: OpConversionPattern<comp::PointsOp>(tc, ctx), symbolTable(st) {
@@ -29,25 +34,21 @@ struct PointsOpLowering : mlir::OpConversionPattern<comp::PointsOp> {
 
 	mlir::LogicalResult matchAndRewrite(comp::PointsOp op, OpAdaptor adaptor,
 	                                    mlir::ConversionPatternRewriter& rewriter) const override {
-		// 1) 取 comp.points 引用的维度符号
 		auto dimRefAttr = op.getDimAttr();
 		if (!dimRefAttr) {
 			return rewriter.notifyMatchFailure(op, "missing dim symbol ref attribute");
 		}
 
-		// 2) 向上就近查对应的 comp.dim 符号
 		auto dimOp = symbolTable.lookupNearestSymbolFrom<comp::DimOp>(op, dimRefAttr);
 		if (!dimOp) {
 			return rewriter.notifyMatchFailure(op, "failed to resolve referenced comp.dim");
 		}
 
-		// 3) 从 comp.dim 的 domain<... points=...> 里读 points
 		int64_t points = dimOp.getPoints();
 		if (points < 0) {
 			return rewriter.notifyMatchFailure(op, "invalid points (<0) on comp.dim");
 		}
 
-		// 4) 替换为 arith 常量 index
 		rewriter.replaceOpWithNewOp<mlir::arith::ConstantIndexOp>(op, points);
 		return mlir::success();
 	}
@@ -84,11 +85,7 @@ struct LowerCompPointsPass
 
 		mlir::ConversionTarget target(*ctx);
 		target.addLegalDialect<mlir::arith::ArithDialect>();
-
-		// 把points标记为非法，即此时所有的points应当都已被降级
 		target.addIllegalOp<comp::PointsOp>();
-
-		// target.addLegalDialect<func::FuncDialect, scf::SCFDialect, memref::MemRefDialect, ...>();
 		target.markUnknownOpDynamicallyLegal([](mlir::Operation*) { return true; });
 
 		if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
@@ -105,4 +102,4 @@ std::unique_ptr<mlir::Pass> createLowerCompPointsPass() {
 	return std::make_unique<LowerCompPointsPass>();
 }
 
-}
+} // namespace ezcompile

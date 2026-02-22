@@ -1,4 +1,4 @@
-﻿//===-- LowerCompApplyInit.cpp ---------------------------------*- C++ -*-===//
+//===-- LowerCompApplyInit.cpp ---------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//
+// comp.apply_init 降级实现
+// 将初始化操作降级为 Affine 循环嵌套 + memref.store
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,6 +28,14 @@
 
 namespace ezcompile {
 
+/// 降级 Pattern：将 comp.apply_init 转换为循环嵌套 + 存储
+///
+/// 实现思路：
+/// 1. 解析锚点信息，区分固定维度和未固定维度
+/// 2. 对未固定维度创建 Affine 循环嵌套
+/// 3. 内联 apply_init 的 region 到循环体内
+/// 4. 降级 coord 操作为坐标计算
+/// 5. 将 yield 值存储到 memref[time=0, ...]
 struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 	using OpConversionPattern<comp::ApplyInitOp>::OpConversionPattern;
 
@@ -34,7 +43,6 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 								  mlir::ConversionPatternRewriter &rewriter) const override {
 		mlir::Location loc = op.getLoc();
 
-		// 1) 获取 memref.alloc
 		mlir::memref::AllocOp alloc = getDefiningFieldOp(op.getField());
 		if (!alloc) {
 			return rewriter.notifyMatchFailure(op, "field is not backed by memref.alloc");
@@ -45,7 +53,7 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 			return rewriter.notifyMatchFailure(op, "field alloc is not a memref");
 		}
 
-		// 2) 将锚点解析为映射：dimSym -> 固定索引（作为 uint64）
+		// 解析锚点：dimSym -> 固定索引
 		mlir::DenseMap<mlir::Attribute, uint64_t> fixed;
 		for (mlir::Attribute a : op.getAnchors()) {
 			auto anc = dyn_cast<comp::AnchorAttr>(a);
@@ -53,7 +61,7 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 			fixed[anc.getDim()] = anc.getIndex();
 		}
 
-		// 3) 确定未固定维度的顺序和所有dim的顺序
+		// 收集维度顺序
 		mlir::SmallVector<mlir::FlatSymbolRefAttr, 4> unfixedDims;
 		mlir::SmallVector<mlir::FlatSymbolRefAttr, 4> dims;
 		mlir::Operation* symTableOp = op->getParentOfType<comp::ProblemOp>();
@@ -66,44 +74,40 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 			dims.emplace_back(sym);
 		});
 
-		// memref 的秩应为 1(time)+N(space)
 		if (unfixedDims.size() + fixed.size() != memrefTy.getRank()) {
 			op.emitError() << "space dims count (" << unfixedDims.size()
 				<< ") does not match memref rank (" << (memrefTy.getRank() - 1) << ")";
 			return mlir::failure();
 		}
 
-		// 4) 构建一个映射 dim -> 索引值（循环 iv 或常量）
+		// dim -> 索引值映射
 		mlir::DenseMap<mlir::Attribute, mlir::Value> dimIndexVal;
 
-		// 所有固定维度的索引应当是固定值
+		// 固定维度的索引
 		for (auto& kv : fixed) {
 			auto d = dyn_cast<mlir::FlatSymbolRefAttr>(kv.first);
 			if (!d) continue;
 			dimIndexVal[d] = constIndex(rewriter, loc, kv.second);
 		}
 
-		// 对所有未固定的维度创建循环
+		// 对未固定维度创建循环
 		for (mlir::FlatSymbolRefAttr d : unfixedDims) {
-			// ub = points(@d) -> 从 comp.dim 属性获取 (i64) -> 常量索引
 			comp::DimOp dimOp = lookupDimOp(op, d);
 			auto points = static_cast<int64_t>(dimOp.getPoints());
 
-			// affine.for %iv = 0 to ub step 1
 			auto forOp = mlir::affine::AffineForOp::create(rewriter, loc, /*lb=*/0, /*ub=*/points, /*step=*/1);
 			mlir::Value iv = forOp.getInductionVar();
 			dimIndexVal[d] = iv;
 
-			// 将插入点设置到此循环的循环体内
 			rewriter.setInsertionPointToStart(forOp.getBody());
 		}
 
-		// 5) 将所有apply_init中原有的语句全部转移至最内侧循环内
+		// 内联 region 到循环内
 		mlir::Block& srcBlock = op.getRhs().front();
 		mlir::Block* dstBlock = rewriter.getInsertionBlock();
-		mlir::Operation* insertPt = dstBlock->getTerminator(); // 在终结符之前插入
+		mlir::Operation* insertPt = dstBlock->getTerminator();
 
-		// 用实际的值替换原先的临时属性
+		// 替换 coord 的 BlockArgument
 		mlir::SmallVector<mlir::Value, 8> argValues;
 		for (mlir::Operation& inner : srcBlock.getOperations()) {
 			auto coord = dyn_cast<comp::CoordOp>(inner);
@@ -116,13 +120,11 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 			}
 		}
 
-		// 记住内联之前的最后一个操作，即循环块顶的操作
-		mlir::Operation* marker = insertPt->getPrevNode(); // 可能为 nullptr
+		mlir::Operation* marker = insertPt->getPrevNode();
 
-		// 将apply_init中的操作内联到循环内
 		rewriter.inlineBlockBefore(&srcBlock, insertPt, argValues);
 
-		// 收集 coord + yield
+		// 收集 coord 和 yield
 		mlir::SmallVector<comp::CoordOp, 8> coordsToLower;
 		comp::YieldOp yieldOp;
 		mlir::Operation *firstNonCoord = nullptr;
@@ -148,13 +150,12 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 			return rewriter.notifyMatchFailure(op, "rhs comp.yield must have exactly 1 operand");
 		}
 
-		// 将插入点放在第一个非Coord操作的位置
+		// 降级 coord
 		mlir::Operation *hoistBefore = firstNonCoord ? firstNonCoord : yieldOp.getOperation();
 		rewriter.setInsertionPoint(hoistBefore);
 
-		// 降级Coord操作
 		for (comp::CoordOp c : coordsToLower) {
-			mlir::Value iv = c.getIv(); // 已通过内联 argValues 替换
+			mlir::Value iv = c.getIv();
 			mlir::Value coordVal = lowerCoord(rewriter, c.getLoc(), op, c.getDimAttr(), iv);
 			if (!coordVal) return mlir::failure();
 			c.replaceAllUsesWith(coordVal);
@@ -163,10 +164,9 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 			rewriter.eraseOp(c);
 		}
 
-		// 将插入点恢复到要创建 store 的位置（通常在 yield 位置）
+		// 存储 yield 值到 memref
 		rewriter.setInsertionPoint(yieldOp);
 
-		// 将 yield 值存储到 memref[time=0, space...]，然后删除 yield
 		mlir::Value yieldedF64 = castToF64(rewriter, yieldOp.getLoc(), yieldOp.getOperand(0));
 
 		mlir::SmallVector<mlir::Value, 8> indices;
@@ -178,7 +178,6 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 		mlir::memref::StoreOp::create(rewriter, yieldOp.getLoc(), yieldedF64, memref, indices);
 		rewriter.eraseOp(yieldOp);
 
-		// 6) 删除 apply_init
 		rewriter.eraseOp(op);
 		return mlir::success();
 	}
@@ -203,9 +202,7 @@ struct LowerCompApplyInitPass : mlir::PassWrapper<LowerCompApplyInitPass, mlir::
 
 		mlir::ConversionTarget target(*context);
 
-		// 标记 Affine,Memref,Arith 为合法
 		target.addLegalDialect<mlir::affine::AffineDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect>();
-		// 标记 comp.for_time 为非法
 		target.addIllegalOp<comp::ApplyInitOp>();
 
 		mlir::RewritePatternSet patterns(context);
@@ -225,4 +222,4 @@ std::unique_ptr<mlir::Pass> createLowerCompApplyInitPass() {
 	return std::make_unique<LowerCompApplyInitPass>();
 }
 
-}
+} // namespace ezcompile

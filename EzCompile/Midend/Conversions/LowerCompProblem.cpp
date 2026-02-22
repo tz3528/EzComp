@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// comp.problem 降级实现
+// 将顶层 comp.problem 操作降级为 func.main 函数
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,6 +27,12 @@
 
 namespace ezcompile {
 
+/// 降级 Pattern：将 comp.problem 转换为 func.main
+///
+/// 实现思路：
+/// 1. 创建空的 main 函数（无参数、无返回值）
+/// 2. 将 problem body 内的所有操作移动到 main 函数中
+/// 3. 删除原 problem 操作
 struct LowerProblemPattern : mlir::OpConversionPattern<comp::ProblemOp> {
 	using OpConversionPattern<comp::ProblemOp>::OpConversionPattern;
 
@@ -42,23 +49,23 @@ struct LowerProblemPattern : mlir::OpConversionPattern<comp::ProblemOp> {
 
 		mlir::Block &problemBlock = body.front();
 
+		// 创建 main 函数
 		rewriter.setInsertionPoint(op);
 		auto funcType = rewriter.getFunctionType(/*inputs=*/{}, /*results=*/{});
 		auto mainFunc = rewriter.create<mlir::func::FuncOp>(op.getLoc(), "main", funcType);
 
-		// entry block + return
 		mlir::Block *entry = mainFunc.addEntryBlock();
 		rewriter.setInsertionPointToEnd(entry);
 		auto ret = rewriter.create<mlir::func::ReturnOp>(op.getLoc());
 
-		// 2) 将 comp.problem 内部所有 op 挪进 main（放在 return 之前）
+		// 将 problem 内部操作移到 main 函数
 		llvm::SmallVector<mlir::Operation*, 16> opsToMove;
 		opsToMove.reserve(problemBlock.getOperations().size());
 		for (mlir::Operation &inner : problemBlock.getOperations())
 			opsToMove.push_back(&inner);
 
 		for (mlir::Operation *inner : opsToMove) {
-			// 如果 problem block 里有 terminator（比如 yield），不要搬
+			// 跳过终结符（如 yield）
 			if (inner->hasTrait<mlir::OpTrait::IsTerminator>())
 				continue;
 
@@ -110,4 +117,4 @@ std::unique_ptr<mlir::Pass> createLowerCompProblemPass() {
 	return std::make_unique<LowerCompProblemPass>();
 }
 
-}
+} // namespace ezcompile
