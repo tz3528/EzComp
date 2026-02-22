@@ -12,7 +12,7 @@ MLIR 中，为后续的转换、优化和代码生成提供丰富的语义信息
 comp 方言的核心价值在于：
 
 - **保留问题级语义**：将时间循环、边界更新时机、邻域访问（stencil）等关键结构语义显式表达
-- **声明与执行分离**：边界条件先声明为句柄，再在适当时机显式应用
+- **边界条件声明式设计**：边界条件在 boundary region 中声明，降级阶段自动应用
 - **支持维度抽象**：自然表达空间和时间维度及其网格离散化
 
 ---
@@ -28,18 +28,18 @@ pass 利用这些语义信息进行针对性的优化，如：
 - 缓存优化（基于 stencil 访问模式）
 - 边界条件特化处理
 
-### 1.2 声明与执行分离
+### 1.2 边界条件声明式设计
 
-边界条件采用两阶段处理模式：
+边界条件采用声明式设计模式：
 
-1. **声明阶段**（`boundary` region）：定义边界条件，返回 `!comp.boundary` 句柄，不直接写入数据
-2. **执行阶段**（`step` region）：通过 `comp.enforce_boundary` 显式应用边界句柄到指定时间层
+- **声明阶段**（`boundary` region）：定义边界条件
+- **自动应用**：降级阶段自动在每个时间步后应用边界条件
 
-这种分离带来以下好处：
+这种设计带来以下好处：
 
-- 边界条件可复用：同一边界条件可在多个时间步应用
-- 语义清晰：声明与更新在代码结构上明确分离
-- 便于优化：编译器可以识别边界条件的重复应用并优化
+- 语义清晰：边界条件的定义与迭代逻辑分离
+- 简化用户代码：用户无需手动在时间循环中插入边界更新
+- 便于优化：编译器可以统一处理边界条件的应用时机
 
 ### 1.3 维度显式化
 
@@ -70,21 +70,7 @@ pass 利用这些语义信息进行针对性的优化，如：
 **示例**：
 
 ```mlir
-%u = comp.field @u(spaceDims = [@x], timeDim = @t) : !comp.field<f64>
-```
-
-#### `!comp.boundary`
-
-**描述**：单条边界条件句柄类型
-
-**用途**：表示一条边界条件的声明，支持 Dirichlet、Neumann、Robin 等类型
-
-**示例**：
-
-```mlir
-%b0 = comp.dirichlet %u anchors = [#comp.anchor<dim = @x, index = 0>] {
-  comp.yield 10.0 : f64
-} : (!comp.field<f64>) -> !comp.boundary
+%u = comp.field @u(spaceDims = [@x], timeDim = @t) : <f64>
 ```
 
 ### 2.2 属性
@@ -169,9 +155,9 @@ comp.problem attributes {
   function = "u(x,t)",
   timeVar = "t"
 } {
+  comp.dim @t domain<lower = 0, upper = 100, points = 101> {timeVar}
   comp.dim @x domain<lower = 0, upper = 100, points = 101>
-  comp.dim @t domain<lower = 0, upper = 100, points = 101>
-  %u = comp.field @u(spaceDims = [@x], timeDim = @t) : !comp.field<f64>
+  %u = comp.field @u(spaceDims = [@x], timeDim = @t) : <f64>
   comp.solve %u { ... } boundary { ... } step { ... }
 }
 ```
@@ -182,6 +168,7 @@ comp.problem attributes {
 
 ```mlir
 comp.dim @x domain<lower=..., upper=..., points=...>
+comp.dim @t domain<lower=..., upper=..., points=...> {timeVar}
 ```
 
 **描述**：声明一个维度符号（如空间维 `@x`、时间维 `@t`）及其均匀网格离散域。
@@ -192,17 +179,19 @@ comp.dim @x domain<lower=..., upper=..., points=...>
 - `lower`（`F64Attr`）：下界
 - `upper`（`F64Attr`）：上界
 - `points`（`I64Attr`）：网格点数
+- `timeVar`（`UnitAttr`，可选）：标记为时间维度
 
 **语义约束**：
 
 - `points >= 2`：至少需要 2 个网格点
 - `upper > lower`：上界必须大于下界
+- 时间维度必须标记 `{timeVar}` 属性
 
 **示例**：
 
 ```mlir
 comp.dim @x domain<lower = 0, upper = 100, points = 101>  // 空间维：[0, 100]，101 点
-comp.dim @t domain<lower = 0, upper = 100, points = 101>  // 时间维：[0, 100]，101 点
+comp.dim @t domain<lower = 0, upper = 100, points = 101> {timeVar}  // 时间维：[0, 100]，101 点
 ```
 
 ### 3.3 `comp.field`
@@ -235,7 +224,7 @@ comp.dim @t domain<lower = 0, upper = 100, points = 101>  // 时间维：[0, 100
 
 ```mlir
 // 2D 问题：两个空间维，一个时间维
-%v = comp.field @v(spaceDims = [@x, @y], timeDim = @t) : !comp.field<f64>
+%v = comp.field @v(spaceDims = [@x, @y], timeDim = @t) : <f64>
 ```
 
 ### 3.4 `comp.points`
@@ -328,8 +317,8 @@ comp.solve %u { <init> } boundary { <boundary-decls> } step { <step> }
 
 **语义约束**：
 
-- `boundary` region 内只允许出现边界"声明类 op"（如 `comp.dirichlet`），返回 `!comp.boundary` 句柄
-- `step` region 内必须对每个时间步的写层执行 `comp.enforce_boundary`
+- `boundary` region 内只允许出现边界"声明类 op"（如 `comp.dirichlet`）
+- `step` region 内只需定义迭代更新逻辑，边界条件会在降级阶段自动应用
 
 **示例**：
 
@@ -340,17 +329,19 @@ comp.solve %u {
       comp.yield 0.0 : f64
   } : <f64>
 } boundary {
-  %b0 = comp.dirichlet %u anchors = [#comp.anchor<dim = @x, index = 0>] {
-    comp.yield 10.0 : f64
-  } : (!comp.field<f64>) -> !comp.boundary
-  comp.yield %b0, %b1 : !comp.boundary, !comp.boundary
+  comp.dirichlet %u anchors = [#comp.anchor<dim = @x, index = 0>] {
+    ^bb0(%n: index):
+      comp.yield 10.0 : f64
+  } : <f64>
+  comp.dirichlet %u anchors = [#comp.anchor<dim = @x, index = 100>] {
+    ^bb0(%n: index):
+      comp.yield 10.0 : f64
+  } : <f64>
 } step {
-  ^bb0(%arg0: !comp.boundary, %arg1: !comp.boundary):
-    %Nt = comp.points @t : index
-    comp.enforce_boundary %u using(%arg0, %arg1) atTime = %c0 : <f64>
-    comp.for_time %c0 to %ub step %c1 {
-      ...
-    }
+  %Nt = comp.points @t : index
+  comp.for_time %c0 to %ub step %c1 {
+    ...
+  }
 } : <f64>
 ```
 
@@ -393,19 +384,15 @@ comp.apply_init %u anchors = [#comp.anchor<dim = @t, index = 0>] {
 **语法**：
 
 ```mlir
-%b = comp.dirichlet %u anchors = [#comp.anchor<dim = @x, index = 0>] { ... } : (!comp.field<f64>) -> !comp.boundary
+comp.dirichlet %u anchors = [#comp.anchor<dim = @x, index = 0>] { ... } : <f64>
 ```
 
-**描述**：声明一条 Dirichlet 边界条件（边界值给定），返回可复用的 `!comp.boundary` 句柄。
+**描述**：声明一条 Dirichlet 边界条件（边界值给定）。
 
 **操作数/属性**：
 
 - `field`（`!comp.field<T>`）：要应用边界条件的 field
 - `anchors`（`ArrayAttr`）：锚点数组，必须把某个空间维固定在边界
-
-**结果**：
-
-- `result`（`!comp.boundary`）：边界条件句柄
 
 **Region**：
 
@@ -421,10 +408,10 @@ comp.apply_init %u anchors = [#comp.anchor<dim = @t, index = 0>] {
 
 ```mlir
 // 常数边界：u(0,t) = 10
-%b0 = comp.dirichlet %u anchors = [#comp.anchor<dim = @x, index = 0>] {
+comp.dirichlet %u anchors = [#comp.anchor<dim = @x, index = 0>] {
   ^bb0(%n: index):
     comp.yield 10.0 : f64
-} : (!comp.field<f64>) -> !comp.boundary
+} : <f64>
 ```
 
 ### 3.9 `comp.for_time`
@@ -461,11 +448,10 @@ comp.for_time %n = <lb> to <ub> step <s> { ... }
 ```mlir
 // 标准：n = 0 到 Nt-1，读 t=n，写 t=n+1
 comp.for_time %n = 0 to (%Nt - 1) step 1 {
-  comp.update %u atTime = %n writeTime = (%n + 1) over = [#comp.range<dim = @x, lower = 1 : i64, upper = -2 : i64>] {
+  comp.update %u atTime = %n over = [#comp.range<dim = @x, lower = 1 : i64, upper = -2 : i64>] {
     ^bb0(%ix: index):
       comp.yield 0.0 : f64
   } : <f64>
-  comp.enforce_boundary %u using(%b0, %b1) atTime = (%n + 1) : <f64>
 }
 ```
 
@@ -474,16 +460,15 @@ comp.for_time %n = 0 to (%Nt - 1) step 1 {
 **语法**：
 
 ```mlir
-comp.update %u atTime = %n writeTime = (%n + 1) over = [#comp.range<dim = @x, lower = 1 : i64, upper = -2 : i64>] { ... } : <f64>
+comp.update %u atTime = %n over = [#comp.range<dim = @x, lower = 1 : i64, upper = -2 : i64>] { ... } : <f64>
 ```
 
-**描述**：表达"每个时间步的迭代更新"。典型用法：只更新 interior，边界由 `enforce_boundary` 负责。
+**描述**：表达"每个时间步的迭代更新"。典型用法：只更新 interior，边界条件在降级阶段自动应用。
 
 **操作数/属性**：
 
 - `field`（`!comp.field<T>`）：要更新的 field
 - `atTime`（`index`）：读取时间层（n）
-- `writeTime`（`index`）：写入时间层（n+1）
 - `over`（`ArrayAttr`）：空间更新范围，使用 `#comp.range` 属性
 
 **Region**：
@@ -495,7 +480,6 @@ comp.update %u atTime = %n writeTime = (%n + 1) over = [#comp.range<dim = @x, lo
 - `body` 必须 `comp.yield` 且恰好产出 1 个值
 - block 参数由用户定义（例如空间索引），因此这里不对它们做约束
 - `atTime` 应与时间循环的归纳变量对齐
-- `writeTime` 通常为 `atTime + 1`
 
 **Region 内容**：
 
@@ -507,10 +491,12 @@ comp.update %u atTime = %n writeTime = (%n + 1) over = [#comp.range<dim = @x, lo
 
 ```mlir
 // 1D 中心差分：只更新内部点，跳过边界
-comp.update %u atTime = %n writeTime = (%n + 1) over = [#comp.range<dim = @x, lower = 1 : i64, upper = -2 : i64>] {
+// 参数顺序：时间索引在前，空间索引在后
+comp.update %u atTime = %n over = [#comp.range<dim = @x, lower = 1 : i64, upper = -2 : i64>] {
   ^bb0(%ix: index):
-    %c = comp.sample %u(%ix, %n) dims = [@x, @t] shift = [0, 0] : (!comp.field<f64>, index, index) -> f64
-    %r = comp.sample %u(%ix, %n) dims = [@x, @t] shift = [1, 0] : (!comp.field<f64>, index, index) -> f64
+    %c = comp.sample %u(%n, %ix) dims = [@t, @x] shift = [0, 0] : (!comp.field<f64>, index, index) -> f64
+    %r = comp.sample %u(%n, %ix) dims = [@t, @x] shift = [0, 1] : (!comp.field<f64>, index, index) -> f64
+    %l = comp.sample %u(%n, %ix) dims = [@t, @x] shift = [0, -1] : (!comp.field<f64>, index, index) -> f64
     %lap = arith.addf %l, %r : f64
     %two = arith.constant 2.0 : f64
     %two_c = arith.mulf %two, %c : f64
@@ -524,7 +510,7 @@ comp.update %u atTime = %n writeTime = (%n + 1) over = [#comp.range<dim = @x, lo
 **语法**：
 
 ```mlir
-%v = comp.sample %u(%ix, %n) dims = [@x, @t] shift = [0, 0] : (!comp.field<f64>, index, index) -> f64
+%v = comp.sample %u(%n, %ix) dims = [@t, @x] shift = [0, 0] : (!comp.field<f64>, index, index) -> f64
 ```
 
 **描述**：邻域访问的一等公民：表达 `u(x + Δx, t + Δt)` 这种 stencil 读。
@@ -532,7 +518,7 @@ comp.update %u atTime = %n writeTime = (%n + 1) over = [#comp.range<dim = @x, lo
 **操作数/属性**：
 
 - `field`（`!comp.field<T>`）：要采样的 field
-- `indices`（`Variadic<Index>`）：基准坐标的索引值（SSA 值）
+- `indices`（`Variadic<Index>`）：基准坐标的索引值（SSA 值），顺序为 `[时间索引, 空间索引...]`
 - `dims`（`ArrayAttr`）：维度引用数组（`FlatSymbolRefAttr`），长度与 `indices` 相同
 - `shift`（`DenseI64ArrayAttr`）：常量偏移数组，长度与 `indices` 相同
 
@@ -554,40 +540,13 @@ comp.update %u atTime = %n writeTime = (%n + 1) over = [#comp.range<dim = @x, lo
 **示例**：
 
 ```mlir
-// 1D 模板：u(x, t)
-%c = comp.sample %u(%ix, %n) dims = [@x, @t] shift = [0, 0] : (!comp.field<f64>, index, index) -> f64
+// 1D 模板：u(x, t)，参数顺序为 [时间索引, 空间索引]
+%c = comp.sample %u(%n, %ix) dims = [@t, @x] shift = [0, 0] : (!comp.field<f64>, index, index) -> f64
+// 偏移采样：u(x+1, t)
+%r = comp.sample %u(%n, %ix) dims = [@t, @x] shift = [0, 1] : (!comp.field<f64>, index, index) -> f64
 ```
 
-### 3.12 `comp.enforce_boundary`
-
-**语法**：
-
-```mlir
-comp.enforce_boundary %u using (%b0, %b1, ...) atTime=(%n + 1)
-```
-
-**描述**：在指定时间层把一组边界句柄应用到 `%u` 上（写边界点/面）。
-
-**操作数/属性**：
-
-- `field`（`!comp.field<T>`）：要应用边界条件的 field
-- `boundaries`（`Variadic<!comp.boundary>`）：边界句柄数组
-- `atTime`（`index`）：应用边界条件的时间层
-
-**语义约束**：
-
-- `boundaries` 里的每个值必须是 `!comp.boundary` 类型
-- `atTime` 应与同一 time-step 的 `writeTime` 对齐
-- 应当在每次时间步更新后，对**写层**（通常 `n+1`）执行一次
-
-**示例**：
-
-```mlir
-// 应用两个边界条件
-comp.enforce_boundary %u using(%b0, %b1) atTime = (%n + 1) : <f64>
-```
-
-### 3.13 `comp.yield`
+### 3.12 `comp.yield`
 
 **语法**：
 
@@ -624,7 +583,7 @@ comp.yield %val : f64
 comp.yield
 ```
 
-### 3.14 `comp.call`
+### 3.13 `comp.call`
 
 **语法**：
 
@@ -666,81 +625,109 @@ comp.yield
 
 ## 4. 完整示例
 
-> 1D heat equation 示例：
-> - PDE：`∂u/∂t = 100 * ∂²u/∂x²`
-> - 初值：`u(x,0)=x`
-> - 边界：`u(0,t)=10+sin(t)`，`u(100,t)=10`
-> - 网格：`x,t` 均为 `[0,100]` 上 101 点
+> 2D heat equation 示例：
+> - PDE：`∂u/∂t = 0.5 * (∂²u/∂x² + ∂²u/∂y²)`
+> - 初值：`u(x,y,0) = 0`
+> - 边界：四边固定值
+> - 网格：`x,y` 为 `[0,50]` 上 51 点，`t` 为 `[0,100]` 上 101 点
 
 ```mlir
 module {
   comp.problem attributes {method = "FDM", mode = "time-pde", precision = -6 : i64, timeVar = "t"} {
+    comp.dim @t domain<lower = 0.000000e+00, upper = 1.000000e+02, points = 101> {timeVar}
     comp.dim @x domain<lower = 0.000000e+00, upper = 5.000000e+01, points = 51>
-    comp.dim @t domain<lower = 0.000000e+00, upper = 1.000000e+02, points = 101>
-    %0 = comp.field @u(spaceDims = [@x], timeDim = @t) : <f64>
+    comp.dim @y domain<lower = 0.000000e+00, upper = 5.000000e+01, points = 51>
+    %0 = comp.field @u(spaceDims = [@x, @y], timeDim = @t) : <f64>
     comp.solve %0 {
       comp.apply_init %0 anchors = [#comp.anchor<dim = @t, index = 0>] {
-      ^bb0(%arg0: index):
+      ^bb0(%arg0: index, %arg1: index):
         %1 = comp.coord @x %arg0 : f64
+        %2 = comp.coord @y %arg1 : f64
         %c0 = arith.constant 0 : index
-        %2 = comp.coord @t %c0 : f64
+        %3 = comp.coord @t %c0 : f64
         %c0_i64 = arith.constant 0 : i64
         comp.yield %c0_i64 : i64
       } : <f64>
     } boundary {
-      %1 = comp.dirichlet %0 anchors = [#comp.anchor<dim = @x, index = 0>] {
-      ^bb0(%arg0: index):
-        %3 = comp.coord @t %arg0 : f64
+      comp.dirichlet %0 anchors = [#comp.anchor<dim = @x, index = 0>] {
+      ^bb0(%arg0: index, %arg1: index):
+        %1 = comp.coord @t %arg0 : f64
+        %2 = comp.coord @y %arg1 : f64
         %c0 = arith.constant 0 : index
-        %4 = comp.coord @x %c0 : f64
+        %3 = comp.coord @x %c0 : f64
         %c100_i64 = arith.constant 100 : i64
         comp.yield %c100_i64 : i64
-      } : (!comp.field<f64>) -> !comp.boundary
-      %2 = comp.dirichlet %0 anchors = [#comp.anchor<dim = @x, index = 50>] {
-      ^bb0(%arg0: index):
-        %3 = comp.coord @t %arg0 : f64
+      } : <f64>
+      comp.dirichlet %0 anchors = [#comp.anchor<dim = @x, index = 50>] {
+      ^bb0(%arg0: index, %arg1: index):
+        %1 = comp.coord @t %arg0 : f64
+        %2 = comp.coord @y %arg1 : f64
         %c50 = arith.constant 50 : index
-        %4 = comp.coord @x %c50 : f64
+        %3 = comp.coord @x %c50 : f64
         %c0_i64 = arith.constant 0 : i64
         comp.yield %c0_i64 : i64
-      } : (!comp.field<f64>) -> !comp.boundary
-      comp.yield %1, %2 : !comp.boundary, !comp.boundary
+      } : <f64>
+      comp.dirichlet %0 anchors = [#comp.anchor<dim = @y, index = 0>] {
+      ^bb0(%arg0: index, %arg1: index):
+        %1 = comp.coord @t %arg0 : f64
+        %2 = comp.coord @x %arg1 : f64
+        %c0 = arith.constant 0 : index
+        %3 = comp.coord @y %c0 : f64
+        %c100_i64 = arith.constant 100 : i64
+        comp.yield %c100_i64 : i64
+      } : <f64>
+      comp.dirichlet %0 anchors = [#comp.anchor<dim = @y, index = 50>] {
+      ^bb0(%arg0: index, %arg1: index):
+        %1 = comp.coord @t %arg0 : f64
+        %2 = comp.coord @x %arg1 : f64
+        %c50 = arith.constant 50 : index
+        %3 = comp.coord @y %c50 : f64
+        %c0_i64 = arith.constant 0 : i64
+        comp.yield %c0_i64 : i64
+      } : <f64>
     } step {
-    ^bb0(%arg0: !comp.boundary, %arg1: !comp.boundary):
       %1 = comp.points @t : index
       %c0 = arith.constant 0 : index
-      comp.enforce_boundary %0 using(%arg0, %arg1) atTime = %c0 : <f64>
-      %c0_0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %2 = arith.subi %1, %c1 : index
-      comp.for_time %c0_0 to %2 step %c1 {
-      ^bb0(%arg2: index):
-        %3 = arith.addi %arg2, %c1 : index
-        %4 = comp.coord @t %arg2 : f64
-        comp.update %0 atTime = %arg2 writeTime = %3 over = [#comp.range<dim = @x, lower = -1 : i64, upper = 1 : i64>] {
-        ^bb0(%arg3: index):
-          %5 = comp.coord @x %arg3 : f64
-          %6 = comp.sample %0(%arg3, %arg2) dims = [@x, @t] shift = [-1, 0] : (!comp.field<f64>, index, index) -> f64
-          %7 = comp.sample %0(%arg3, %arg2) dims = [@x, @t] shift = [0, 0] : (!comp.field<f64>, index, index) -> f64
-          %8 = comp.sample %0(%arg3, %arg2) dims = [@x, @t] shift = [0, 1] : (!comp.field<f64>, index, index) -> f64
-          %9 = comp.sample %0(%arg3, %arg2) dims = [@x, @t] shift = [1, 0] : (!comp.field<f64>, index, index) -> f64
-          %10 = arith.addf %6, %9 : f64
+      comp.for_time %c0 to %2 step %c1 {
+      ^bb0(%arg0: index):
+        %3 = comp.coord @t %arg0 : f64
+        comp.update %0 atTime = %arg0 over = [#comp.range<dim = @x, lower = -1 : i64, upper = 1 : i64>, #comp.range<dim = @y, lower = -1 : i64, upper = 1 : i64>] {
+        ^bb0(%arg1: index, %arg2: index):
+          %4 = comp.coord @x %arg1 : f64
+          %5 = comp.coord @y %arg2 : f64
+          %6 = comp.sample %0(%arg0, %arg1, %arg2) dims = [@t, @x, @y] shift = [0, -1, 0] : (!comp.field<f64>, index, index, index) -> f64
+          %7 = comp.sample %0(%arg0, %arg1, %arg2) dims = [@t, @x, @y] shift = [0, 0, -1] : (!comp.field<f64>, index, index, index) -> f64
+          %8 = comp.sample %0(%arg0, %arg1, %arg2) dims = [@t, @x, @y] shift = [0, 0, 0] : (!comp.field<f64>, index, index, index) -> f64
+          %9 = comp.sample %0(%arg0, %arg1, %arg2) dims = [@t, @x, @y] shift = [0, 0, 1] : (!comp.field<f64>, index, index, index) -> f64
+          %10 = comp.sample %0(%arg0, %arg1, %arg2) dims = [@t, @x, @y] shift = [0, 1, 0] : (!comp.field<f64>, index, index, index) -> f64
+          %11 = comp.sample %0(%arg0, %arg1, %arg2) dims = [@t, @x, @y] shift = [1, 0, 0] : (!comp.field<f64>, index, index, index) -> f64
+          %12 = arith.addf %6, %10 : f64
           %c2_i64 = arith.constant 2 : i64
-          %11 = arith.sitofp %c2_i64 : i64 to f64
-          %12 = arith.mulf %11, %7 : f64
-          %13 = arith.subf %10, %12 : f64
+          %13 = arith.sitofp %c2_i64 : i64 to f64
+          %14 = arith.mulf %13, %8 : f64
+          %15 = arith.subf %12, %14 : f64
+          %c2_i64_0 = arith.constant 2 : i64
+          %16 = comp.call @delta(%4, %c2_i64_0) : (f64, i64) -> f64
+          %17 = arith.divf %15, %16 : f64
+          %18 = arith.addf %7, %9 : f64
           %c2_i64_1 = arith.constant 2 : i64
-          %14 = comp.call @delta(%5, %c2_i64_1) : (f64, i64) -> f64
-          %15 = arith.divf %13, %14 : f64
-          %cst = arith.constant 1.000000e+02 : f64
-          %16 = arith.mulf %cst, %15 : f64
+          %19 = arith.sitofp %c2_i64_1 : i64 to f64
+          %20 = arith.mulf %19, %8 : f64
+          %21 = arith.subf %18, %20 : f64
+          %c2_i64_2 = arith.constant 2 : i64
+          %22 = comp.call @delta(%5, %c2_i64_2) : (f64, i64) -> f64
+          %23 = arith.divf %21, %22 : f64
+          %cst = arith.constant 5.000000e-01 : f64
+          %24 = arith.addf %17, %23 : f64
+          %25 = arith.mulf %cst, %24 : f64
           %c1_i64 = arith.constant 1 : i64
-          %17 = comp.call @delta(%4, %c1_i64) : (f64, i64) -> f64
-          %18 = arith.mulf %16, %17 : f64
-          %19 = arith.addf %7, %18 : f64
-          comp.yield %19 : f64
+          %26 = comp.call @delta(%3, %c1_i64) : (f64, i64) -> f64
+          %27 = arith.mulf %25, %26 : f64
+          %28 = arith.addf %8, %27 : f64
+          comp.yield %28 : f64
         } : <f64>
-        comp.enforce_boundary %0 using(%arg0, %arg1) atTime = %3 : <f64>
       }
     } : <f64>
   }
