@@ -1,0 +1,1 @@
+# --- EzCompile/Bakend/Translate/CMakeLists.txt ---

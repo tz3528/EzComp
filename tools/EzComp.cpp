@@ -122,8 +122,9 @@ static int dumpMLIR() {
     }
 
     auto moduleAST = parseInputFile(inputFilename);
-    if (!moduleAST)
+    if (!moduleAST) {
         return 1;
+    }
 
     auto parse_module = moduleAST.get();
 
