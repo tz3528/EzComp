@@ -36,6 +36,7 @@
 #include "IRGen/MLIRGen.h"
 #include "Transforms/Pipelines.h"
 #include "Transforms/Passes.h"
+#include "Driver/BakendDriver.h"
 
 namespace cl = llvm::cl;
 using namespace ezcompile;
@@ -55,12 +56,13 @@ static cl::opt<enum InputType> inputType(
                           "load the input file as an MLIR file")));
 
 namespace {
-enum Action { None, DumpAST, DumpMLIR };
+enum Action { None, DumpAST, DumpMLIR , DumpLLVM };
 } // namespace
 static cl::opt<enum Action> emitAction(
     "emit", cl::desc("Select the kind of output desired"),
     cl::values(clEnumValN(DumpAST, "ast", "output the AST dump")),
-    cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")));
+    cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")),
+    cl::values(clEnumValN(DumpLLVM, "llvm", "output the LLVM dump")));
 
 static mlir::PassPipelineCLParser passPipeline("",
     "Run an MLIR pass pipeline (use --pass-pipeline=...)");
@@ -176,6 +178,64 @@ static int dumpMLIR() {
     return 0;
 }
 
+static int dumpLLVM() {
+    if (inputType == InputType::MLIR) {
+        llvm::errs() << "Can't dump a Comp AST when the input is MLIR\n";
+        return 5;
+    }
+
+    auto moduleAST = parseInputFile(inputFilename);
+    if (!moduleAST) {
+        return 1;
+    }
+
+    mlir::DialectRegistry registry;
+    mlir::registerAllExtensions(registry);
+    mlir::MLIRContext context(registry);
+    context.getOrLoadDialect<comp::CompDialect>();
+    context.getOrLoadDialect<mlir::affine::AffineDialect>();
+    context.getOrLoadDialect<mlir::arith::ArithDialect>();
+    context.getOrLoadDialect<mlir::math::MathDialect>();
+    context.getOrLoadDialect<mlir::memref::MemRefDialect>();
+    context.getOrLoadDialect<mlir::scf::SCFDialect>();
+    context.getOrLoadDialect<mlir::cf::ControlFlowDialect>();
+    context.getOrLoadDialect<mlir::func::FuncDialect>();
+    context.getOrLoadDialect<mlir::LLVM::LLVMDialect>();
+    context.getOrLoadDialect<mlir::ub::UBDialect>();
+
+    MLIRGen gen(*moduleAST.get(), context);
+    auto mo = gen.mlirGen();
+
+    if (mlir::failed(mo)) {
+        return 2;
+    }
+
+    mlir::PassManager pm(&context);
+
+    auto errHandler = [&](const llvm::Twine &msg) -> mlir::LogicalResult {
+        llvm::errs() << "Failed to parse/add pass pipeline: " << msg << "\n";
+        return mlir::failure();
+    };
+
+    if (mlir::failed(passPipeline.addToPipeline(pm, errHandler))) {
+        return 3;
+    }
+
+    if (mlir::failed(pm.run(*mo))) {
+        llvm::errs() << "Pipeline failed\n";
+        mo->print(llvm::errs());
+        return 3;
+    }
+
+    Bakend bakend;
+
+    if (mlir::failed(bakend.run(*mo))) {
+        return 4;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     mlir::DialectRegistry registry;
 
@@ -191,6 +251,8 @@ int main(int argc, char **argv) {
         return dumpAST();
     case Action::DumpMLIR:
         return dumpMLIR();
+    case Action::DumpLLVM:
+        return dumpLLVM();
     default:
         llvm::errs() << "No action specified (parsing only?), use -emit=<action>\n";
     }
