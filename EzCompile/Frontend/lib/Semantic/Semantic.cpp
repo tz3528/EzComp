@@ -476,7 +476,7 @@ void Semantic::checkShiftInfo(const ExprAST* expr, SymbolTable& st, TargetFuncti
 	}
 }
 
-void Semantic::adjestEquationOrder(EquationGroups& eg, TargetFunctionMeta& target) {
+void Semantic::adjustEquationOrder(EquationGroups& eg, TargetFunctionMeta& target) {
 	EqGraph G;
 
 	// 首先收集所有方程的左侧定义
