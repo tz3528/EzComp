@@ -1,7 +1,7 @@
-# --- EzCompile/Bakend/CMakeLists.txt ---
+# --- EzCompile/Backend/CMakeLists.txt ---
 
-# 1. 定义库目标 (Bakend)
-add_library(Bakend STATIC)
+# 1. 定义库目标 (Backend)
+add_library(Backend STATIC)
 
 # 2. LLVM 依赖
 llvm_map_components_to_libnames(llvm_libs
@@ -12,9 +12,8 @@ llvm_map_components_to_libnames(llvm_libs
 )
 
 # 3. 链接依赖
-target_link_libraries(Bakend PUBLIC
+target_link_libraries(Backend PUBLIC
         ${llvm_libs}
-        Midend
         MLIRIR
         MLIRSupport
         MLIRTargetLLVMIRExport          # MLIR -> LLVM IR 转换
@@ -24,7 +23,7 @@ target_link_libraries(Bakend PUBLIC
 )
 
 # 4. 头文件目录
-target_include_directories(Bakend PUBLIC
+target_include_directories(Backend PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
