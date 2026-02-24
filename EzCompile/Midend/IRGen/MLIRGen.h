@@ -132,7 +132,7 @@ private:
 	struct TimeLoopCtx {
 		comp::ForTimeOp loop;			// 循环操作符
 		mlir::Value atTime;				// 当前时刻
-		mlir::Value lb, ub, step;		// 寻话初值、循环上界和步长
+		mlir::Value lb, ub, step;		// 循环初值、循环上界和步长
 
 		static TimeLoopCtx makeTimeLoopCtx(comp::ForTimeOp loop) {
 			mlir::Block &entry = loop.getBody().front();

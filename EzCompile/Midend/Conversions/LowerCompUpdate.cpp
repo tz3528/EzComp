@@ -95,7 +95,7 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 			cur = cur->getNextNode();
 		}
 		if (firstNonCoord == nullptr) {
-			return mlir::emitError(loc, "don`t have CoordOp");
+			return mlir::emitError(loc, "doesn't have CoordOp");
 		}
 		firstNonCoord = firstNonCoord->getNextNode();
 

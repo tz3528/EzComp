@@ -179,7 +179,7 @@ private:
 	                    StencilInfo& shift_info);
 
 	/// 调整方程顺序（拓扑排序）
-	void adjestEquationOrder(EquationGroups& eg, TargetFunctionMeta& target);
+	void adjustEquationOrder(EquationGroups& eg, TargetFunctionMeta& target);
 
 	/// 从表达式中提取整数值（支持负数）
 	static bool getInteger(ExprAST* expr, int64_t& result);

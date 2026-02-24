@@ -57,7 +57,7 @@ std::unique_ptr<SemanticResult> Semantic::analyze(const ModuleAST& module) {
 	}
 	tfm.func = opt.targetFunc.name;
 
-	adjestEquationOrder(eg, tfm);
+	adjustEquationOrder(eg, tfm);
 	if (hadError()) {
 		return nullptr;
 	}
@@ -250,19 +250,19 @@ void Semantic::checkFunctionType(
 						return;
 					}
 					if (!llvm::isa<IntExprAST>(rhs)) {
-						emitError(rhs->getBeginLoc(), "rhs must is a Interger");
+						emitError(rhs->getBeginLoc(), "rhs must be an Integer");
 						return;
 					}
 					// 变量+/-常数表示偏移访问，属于迭代方程
 					isIteration = true;
 				}
 				else {
-					emitError(lhs->getBeginLoc(), "The left must is a var");
+					emitError(lhs->getBeginLoc(), "The left must be a variable");
 					return;
 				}
 			}
 			else {
-				emitError(call->getBeginLoc(), "function is undefine");
+				emitError(call->getBeginLoc(), "function is undefined");
 			}
 		}
 	}
@@ -287,7 +287,7 @@ void Semantic::checkFunctionType(
 	}
 	else {
 		// 非法情况：一个方程不能同时属于多种类型
-		emitError(equation->getBeginLoc(), "equation have more than two type");
+		emitError(equation->getBeginLoc(), "equation has more than two types");
 	}
 }
 
@@ -510,7 +510,7 @@ void Semantic::adjestEquationOrder(EquationGroups& eg, TargetFunctionMeta& targe
 		});
 	}
 
-	// 用当前依赖图的bfs更新远方程序
+	// 用当前依赖图的bfs更新方程顺序
 	auto result = G.getTopoOrder();
 	if (mlir::failed(result)) {
 		emitError(eg.iter[0]->getBeginLoc(), "There must be no circular dependencies.");
