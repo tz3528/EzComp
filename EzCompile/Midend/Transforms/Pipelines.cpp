@@ -18,12 +18,7 @@ namespace ezcompile {
 
 void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 
-	//===--------------------------------------------------------------------===//
-	// 阶段1：Comp 方言 → 基础方言
-	//===--------------------------------------------------------------------===//
-
-	if (opt.enableLowerToBase.getValue()) {
-		// Comp 方言各操作降级
+	if (opt.enableLowerToBase.getValue() || opt.enableToLLVM.getValue()) {
 		pm.addPass(createLowerCompCallPass());
 		pm.addPass(createLowerCompPointsPass());
 		pm.addPass(createLowerCompFieldPass());
