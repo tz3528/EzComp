@@ -1,0 +1,80 @@
+#===-- 2d_boundary_with_time.test -----------------------------*-- Comp -*-===#
+#
+# 2D: 边界方程右侧有时间信息
+# u(0,y,t) = sin(t) → 边界条件依赖时间
+#
+#===------------------------------------------------------------------------===#
+
+# RUN: %ezcomp %s --emit=mlir | FileCheck %s
+
+# ===== 顶层结构 =====
+# CHECK-LABEL: comp.problem
+# CHECK: comp.dim @t
+# CHECK: comp.dim @x
+# CHECK: comp.dim @y
+# CHECK: comp.field @u(spaceDims = [@x, @y], timeDim = @t)
+# CHECK: comp.solve
+
+# ===== 初始化块 =====
+# CHECK-LABEL: comp.apply_init
+# CHECK: comp.coord @x
+# CHECK: comp.coord @y
+# CHECK: comp.coord @t
+# CHECK: comp.yield
+
+# ===== 边界条件块：第一个包含 sin(t) =====
+# CHECK-LABEL: comp.dirichlet
+# CHECK: comp.coord @t
+# CHECK: comp.coord @y
+# CHECK: comp.coord @x
+# CHECK: comp.call @sin
+# CHECK: comp.yield {{.*}} : f64
+
+# CHECK: comp.dirichlet
+# CHECK: comp.coord @t
+# CHECK: comp.coord @y
+# CHECK: comp.coord @x
+# CHECK: comp.yield
+
+# CHECK: comp.dirichlet
+# CHECK: comp.coord @t
+# CHECK: comp.coord @x
+# CHECK: comp.coord @y
+# CHECK: comp.yield
+
+# CHECK: comp.dirichlet
+# CHECK: comp.coord @t
+# CHECK: comp.coord @x
+# CHECK: comp.coord @y
+# CHECK: comp.yield
+
+# ===== 迭代块 =====
+# CHECK-LABEL: comp.for_time
+# CHECK: comp.coord @t
+# CHECK: comp.update
+# CHECK-DAG: comp.sample {{.*}} dims = [@t, @x, @y] shift = [0, 0, 0]
+# CHECK-DAG: comp.sample {{.*}} dims = [@t, @x, @y] shift = [1, 0, 0]
+# CHECK: comp.yield
+
+declarations {
+    x[0,10,11];
+    y[0,10,11];
+    t[0,10,11];
+}
+
+equations {
+    u(x,y,0) = 0;
+    u(0,y,t) = sin(t);
+    u(10,y,t) = 0;
+    u(x,0,t) = 0;
+    u(x,10,t) = 0;
+    u(x,y,t+1) = u(x,y,t);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,y,t)";
+    timeVar:"t";
+}
