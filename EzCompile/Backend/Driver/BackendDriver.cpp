@@ -22,6 +22,7 @@
 #include "llvm/TargetParser/Host.h"
 
 #include "BackendDriver.h"
+#include "Target/CodeEmitter.h"
 
 namespace ezcompile {
 
@@ -32,13 +33,10 @@ void Backend::dumpLLVMIR(llvm::Module &module) {
 }
 
 mlir::LogicalResult Backend::codeGen(llvm::Module &module,
-                                      llvm::TargetMachine &targetMachine) {
-    // TODO: 实现代码生成
-    // 1. 设置目标数据布局
-    // 2. 添加优化 pass
-    // 3. 生成目标代码 (.o 文件)
-    llvm::errs() << "CodeGen: TODO - 尚未实现\n";
-    return mlir::success();
+                                      llvm::TargetMachine &targetMachine,
+                                      const std::string &outputPath) {
+    target::CodeEmitter emitter(targetMachine);
+    return emitter.emit(module, outputPath, target::OutputFileType::ObjectFile);
 }
 
 mlir::LogicalResult Backend::link(const std::string &objectFile,
@@ -84,18 +82,16 @@ mlir::LogicalResult Backend::fullCompile(llvm::Module &module) {
         return mlir::failure();
     }
 
-    module.setDataLayout(targetMachine->createDataLayout());
-    module.setTargetTriple(triple);
+    // 确定输出文件路径
+    std::string objFile = config.outputFileVal.empty() ? "a.o" : config.outputFileVal + ".o";
+    std::string exeFile = config.outputFileVal.empty() ? "a.out" : config.outputFileVal;
 
     // 代码生成
-    if (mlir::failed(codeGen(module, *targetMachine))) {
+    if (mlir::failed(codeGen(module, *targetMachine, objFile))) {
         return mlir::failure();
     }
 
     // 链接
-    std::string objFile = config.outputFileVal.empty() ? "a.o" : config.outputFileVal + ".o";
-    std::string exeFile = config.outputFileVal.empty() ? "a.out" : config.outputFileVal;
-
     if (mlir::failed(link(objFile, exeFile))) {
         return mlir::failure();
     }

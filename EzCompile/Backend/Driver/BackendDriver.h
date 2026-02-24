@@ -44,7 +44,9 @@ private:
     mlir::LogicalResult fullCompile(llvm::Module &module);
 
     /// 代码生成 (LLVM IR -> 目标代码)
-    mlir::LogicalResult codeGen(llvm::Module &module, llvm::TargetMachine &targetMachine);
+    mlir::LogicalResult codeGen(llvm::Module &module,
+                                 llvm::TargetMachine &targetMachine,
+                                 const std::string &outputPath);
 
     /// 链接生成可执行文件
     mlir::LogicalResult link(const std::string &objectFile, const std::string &outputFile);

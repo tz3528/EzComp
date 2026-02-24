@@ -36,7 +36,8 @@
 #include "IRGen/MLIRGen.h"
 #include "Transforms/Pipelines.h"
 #include "Transforms/Passes.h"
-#include "Driver/BakendDriver.h"
+#include "Driver/BackendDriver.h"
+#include "Driver/BackendOptions.h"
 
 namespace cl = llvm::cl;
 using namespace ezcompile;
@@ -56,13 +57,14 @@ static cl::opt<enum InputType> inputType(
                           "load the input file as an MLIR file")));
 
 namespace {
-enum Action { None, DumpAST, DumpMLIR , DumpLLVM };
+enum Action { None, DumpAST, DumpMLIR , DumpLLVMIR , Compile };
 } // namespace
 static cl::opt<enum Action> emitAction(
     "emit", cl::desc("Select the kind of output desired"),
     cl::values(clEnumValN(DumpAST, "ast", "output the AST dump")),
     cl::values(clEnumValN(DumpMLIR, "mlir", "output the MLIR dump")),
-    cl::values(clEnumValN(DumpLLVM, "llvm", "output the LLVM dump")));
+    cl::values(clEnumValN(DumpLLVMIR, "llvmir", "output the LLVM dump")),
+    cl::values(clEnumValN(Compile, "compile", "compile to executable")));
 
 static mlir::PassPipelineCLParser passPipeline("",
     "Run an MLIR pass pipeline (use --pass-pipeline=...)");
@@ -103,6 +105,20 @@ static std::unique_ptr<ParsedModule> parseInputFile(llvm::StringRef filename) {
     return out;
 }
 
+static void LoadDialect(mlir::MLIRContext &context) {
+    // 加载所有需要的方言
+    context.getOrLoadDialect<comp::CompDialect>();
+    context.getOrLoadDialect<mlir::affine::AffineDialect>();
+    context.getOrLoadDialect<mlir::arith::ArithDialect>();
+    context.getOrLoadDialect<mlir::math::MathDialect>();
+    context.getOrLoadDialect<mlir::memref::MemRefDialect>();
+    context.getOrLoadDialect<mlir::scf::SCFDialect>();
+    context.getOrLoadDialect<mlir::cf::ControlFlowDialect>();
+    context.getOrLoadDialect<mlir::func::FuncDialect>();
+    context.getOrLoadDialect<mlir::LLVM::LLVMDialect>();
+    context.getOrLoadDialect<mlir::ub::UBDialect>();
+}
+
 static int dumpAST() {
     if (inputType == InputType::MLIR) {
         llvm::errs() << "Can't dump a Comp AST when the input is MLIR\n";
@@ -132,20 +148,8 @@ static int dumpMLIR() {
 
     mlir::DialectRegistry registry;
     mlir::registerAllExtensions(registry);
-
     mlir::MLIRContext context(registry);
-
-    // 加载所有需要的方言
-    context.getOrLoadDialect<comp::CompDialect>();
-    context.getOrLoadDialect<mlir::affine::AffineDialect>();
-    context.getOrLoadDialect<mlir::arith::ArithDialect>();
-    context.getOrLoadDialect<mlir::math::MathDialect>();
-    context.getOrLoadDialect<mlir::memref::MemRefDialect>();
-    context.getOrLoadDialect<mlir::scf::SCFDialect>();
-    context.getOrLoadDialect<mlir::cf::ControlFlowDialect>();
-    context.getOrLoadDialect<mlir::func::FuncDialect>();
-    context.getOrLoadDialect<mlir::LLVM::LLVMDialect>();
-    context.getOrLoadDialect<mlir::ub::UBDialect>();
+    LoadDialect(context);
 
     MLIRGen gen(*parse_module, context);
     auto mo = gen.mlirGen();
@@ -178,7 +182,7 @@ static int dumpMLIR() {
     return 0;
 }
 
-static int dumpLLVM() {
+static int dumpLLVMIR() {
     if (inputType == InputType::MLIR) {
         llvm::errs() << "Can't dump a Comp AST when the input is MLIR\n";
         return 5;
@@ -192,16 +196,7 @@ static int dumpLLVM() {
     mlir::DialectRegistry registry;
     mlir::registerAllExtensions(registry);
     mlir::MLIRContext context(registry);
-    context.getOrLoadDialect<comp::CompDialect>();
-    context.getOrLoadDialect<mlir::affine::AffineDialect>();
-    context.getOrLoadDialect<mlir::arith::ArithDialect>();
-    context.getOrLoadDialect<mlir::math::MathDialect>();
-    context.getOrLoadDialect<mlir::memref::MemRefDialect>();
-    context.getOrLoadDialect<mlir::scf::SCFDialect>();
-    context.getOrLoadDialect<mlir::cf::ControlFlowDialect>();
-    context.getOrLoadDialect<mlir::func::FuncDialect>();
-    context.getOrLoadDialect<mlir::LLVM::LLVMDialect>();
-    context.getOrLoadDialect<mlir::ub::UBDialect>();
+    LoadDialect(context);
 
     MLIRGen gen(*moduleAST.get(), context);
     auto mo = gen.mlirGen();
@@ -212,13 +207,24 @@ static int dumpLLVM() {
 
     mlir::PassManager pm(&context);
 
-    auto errHandler = [&](const llvm::Twine &msg) -> mlir::LogicalResult {
-        llvm::errs() << "Failed to parse/add pass pipeline: " << msg << "\n";
-        return mlir::failure();
-    };
+    // 如果用户指定了 passPipeline，使用用户的配置；否则使用默认的完整 pipeline
+    if (passPipeline.hasAnyOccurrences()) {
+        auto errHandler = [&](const llvm::Twine &msg) -> mlir::LogicalResult {
+            llvm::errs() << "Failed to parse/add pass pipeline: " << msg << "\n";
+            return mlir::failure();
+        };
 
-    if (mlir::failed(passPipeline.addToPipeline(pm, errHandler))) {
-        return 3;
+        if (mlir::failed(passPipeline.addToPipeline(pm, errHandler))) {
+            return 3;
+        }
+    } else {
+        // 默认开启所有优化选项，完整降级到 LLVM 方言
+        PipelineOptions opt;
+        opt.enableLowerToBase = true;
+        opt.enableAffineToSCF = true;
+        opt.enableSCFToCF = true;
+        opt.enableToLLVM = true;
+        buildPipeline(pm, opt);
     }
 
     if (mlir::failed(pm.run(*mo))) {
@@ -227,9 +233,71 @@ static int dumpLLVM() {
         return 3;
     }
 
-    Bakend bakend;
+    // DumpLLVMIR 模式：不考虑选项，直接输出 LLVM IR
+    Backend backend(backend::BackendConfig::forDumpLLVMIR());
 
-    if (mlir::failed(bakend.run(*mo))) {
+    if (mlir::failed(backend.run(*mo))) {
+        return 4;
+    }
+
+    return 0;
+}
+
+static int compile() {
+    if (inputType == InputType::MLIR) {
+        llvm::errs() << "Can't dump a Comp AST when the input is MLIR\n";
+        return 5;
+    }
+
+    auto moduleAST = parseInputFile(inputFilename);
+    if (!moduleAST) {
+        return 1;
+    }
+
+    mlir::DialectRegistry registry;
+    mlir::registerAllExtensions(registry);
+    mlir::MLIRContext context(registry);
+    LoadDialect(context);
+
+    MLIRGen gen(*moduleAST.get(), context);
+    auto mo = gen.mlirGen();
+
+    if (mlir::failed(mo)) {
+        return 2;
+    }
+
+    mlir::PassManager pm(&context);
+
+    // 如果用户指定了 passPipeline，使用用户的配置；否则使用默认的完整 pipeline
+    if (passPipeline.hasAnyOccurrences()) {
+        auto errHandler = [&](const llvm::Twine &msg) -> mlir::LogicalResult {
+            llvm::errs() << "Failed to parse/add pass pipeline: " << msg << "\n";
+            return mlir::failure();
+        };
+
+        if (mlir::failed(passPipeline.addToPipeline(pm, errHandler))) {
+            return 3;
+        }
+    } else {
+        // 默认开启所有优化选项，完整降级到 LLVM 方言
+        PipelineOptions opt;
+        opt.enableLowerToBase = true;
+        opt.enableAffineToSCF = true;
+        opt.enableSCFToCF = true;
+        opt.enableToLLVM = true;
+        buildPipeline(pm, opt);
+    }
+
+    if (mlir::failed(pm.run(*mo))) {
+        llvm::errs() << "Pipeline failed\n";
+        mo->print(llvm::errs());
+        return 3;
+    }
+
+    // FullCompile 模式：使用命令行选项进行完整编译
+    Backend backend(backend::BackendConfig::fromCommandLine());
+
+    if (mlir::failed(backend.run(*mo))) {
         return 4;
     }
 
@@ -251,8 +319,10 @@ int main(int argc, char **argv) {
         return dumpAST();
     case Action::DumpMLIR:
         return dumpMLIR();
-    case Action::DumpLLVM:
-        return dumpLLVM();
+    case Action::DumpLLVMIR:
+        return dumpLLVMIR();
+    case Action::Compile:
+        return compile();
     default:
         llvm::errs() << "No action specified (parsing only?), use -emit=<action>\n";
     }

@@ -17,7 +17,7 @@ namespace ezcompile {
 
 void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 
-	if (opt.enableLowerToBase.getValue()) {
+	if (opt.enableLowerToBase.getValue() || opt.enableToLLVM.getValue()) {
 		pm.addPass(createLowerCompCallPass());
 		pm.addPass(createLowerCompPointsPass());
 		pm.addPass(createLowerCompFieldPass());
