@@ -43,3 +43,11 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_subdirectory(EzCompile)
 add_subdirectory(EzCompute)
 add_subdirectory(tools)
+
+# ---------------------------------------------------------------------------
+# 7. 测试
+# ---------------------------------------------------------------------------
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test")
+    enable_testing()
+    add_subdirectory(test)
+endif()

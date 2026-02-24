@@ -1,0 +1,60 @@
+#===-- 1d_init_with_pos.test ---------------------------------*-- Comp -*-===#
+#
+# 1D: 初始化方程右侧有位置信息
+# u(x,0) = x → yield 类型应为 f64（来自 coord @x）
+#
+#===------------------------------------------------------------------------===#
+
+# RUN: %ezcomp %s --emit=mlir | FileCheck %s
+
+# ===== 顶层结构 =====
+# CHECK-LABEL: comp.problem
+# CHECK: comp.dim @t
+# CHECK: comp.dim @x
+# CHECK: comp.field @u(spaceDims = [@x], timeDim = @t)
+# CHECK: comp.solve
+
+# ===== 初始化块：yield f64 表示右侧有位置信息 =====
+# CHECK-LABEL: comp.apply_init
+# CHECK: comp.coord @x
+# CHECK: comp.coord @t
+# CHECK: comp.yield {{.*}} : f64
+
+# ===== 边界条件块 =====
+# CHECK-LABEL: comp.dirichlet
+# CHECK: comp.coord @t
+# CHECK: comp.coord @x
+# CHECK: comp.yield
+
+# CHECK: comp.dirichlet
+# CHECK: comp.coord @t
+# CHECK: comp.coord @x
+# CHECK: comp.yield
+
+# ===== 迭代块 =====
+# CHECK-LABEL: comp.for_time
+# CHECK: comp.coord @t
+# CHECK: comp.update
+# CHECK-DAG: comp.sample {{.*}} dims = [@t, @x] shift = [0, 0]
+# CHECK-DAG: comp.sample {{.*}} dims = [@t, @x] shift = [1, 0]
+# CHECK: comp.yield
+
+declarations {
+    x[0,100,101];
+    t[0,50,51];
+}
+
+equations {
+    u(x,0) = x;
+    u(0,t) = 0;
+    u(100,t) = 0;
+    u(x,t+1) = u(x,t);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,t)";
+    timeVar:"t";
+}

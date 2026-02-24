@@ -1,0 +1,23 @@
+#===-- lit.site.cfg.py.in -------------------------------------*- Python -*-===#
+# EzComp LIT Site Configuration Template
+# This file is configured by CMake and used to set up the test environment.
+#===------------------------------------------------------------------------===#
+
+import lit.formats
+
+# EzComp executable paths
+config.ezcomp_executable = "@EZCOMP_EXECUTABLE@"
+config.filecheck_executable = "@FILECHECK_EXECUTABLE@"
+
+# Test configuration
+config.name = "EzComp"
+config.test_format = lit.formats.ShTest(execute_external=False)
+config.suffixes = ['.comp', '.test']
+
+# Source and execution roots
+config.test_source_root = "@CMAKE_CURRENT_SOURCE_DIR@"
+config.test_exec_root = "@CMAKE_CURRENT_BINARY_DIR@"
+
+# Substitutions
+config.substitutions.append(('%ezcomp', config.ezcomp_executable))
+config.substitutions.append(('FileCheck', config.filecheck_executable))
