@@ -66,7 +66,6 @@ std::unique_ptr<mlir::Pass> createLowerCompUpdatePass();
 std::unique_ptr<mlir::Pass> createLowerCompSolvePass();
 std::unique_ptr<mlir::Pass> createLowerCompProblemPass();
 std::unique_ptr<mlir::Pass> createLowerCompCallPass();
-std::unique_ptr<mlir::Pass> createCleanupUnrealizedCastPass();
 
 }
 
