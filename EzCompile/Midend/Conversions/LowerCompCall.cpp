@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// comp.call 降级实现
+// 将内置函数调用降级为算术运算
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,6 +25,10 @@
 
 namespace ezcompile {
 
+/// 降级 Pattern：delta(var, rank) -> var^rank
+///
+/// 实现思路：
+/// 将 delta 函数调用转换为 math.pow 操作。
 struct LowerCallDeltaPattern : mlir::OpConversionPattern<comp::CallOp> {
 	using OpConversionPattern<comp::CallOp>::OpConversionPattern;
 
@@ -34,12 +39,10 @@ struct LowerCallDeltaPattern : mlir::OpConversionPattern<comp::CallOp> {
 										mlir::ConversionPatternRewriter &rewriter) const override {
 		mlir::Location loc = op.getLoc();
 
-		// 1. 只匹配 delta
 		if (op.getCallee().str() != "delta") {
 			return mlir::emitError(loc, "not delta");
 		}
 
-		// 2. 参数校验
 		if (adaptor.getOperands().size() != 2) {
 			return mlir::emitError(loc, "delta expects 2 operands");
 		}
@@ -57,6 +60,11 @@ struct LowerCallDeltaPattern : mlir::OpConversionPattern<comp::CallOp> {
 	}
 };
 
+/// 降级 Pattern：处理未知的 comp.call
+///
+/// 实现思路：
+/// 对 diff 调用不做处理（已在其他 Pass 中处理），
+/// 对其他未知调用报错。
 struct LowerCallUnknownPattern : mlir::OpConversionPattern<comp::CallOp> {
 	using OpConversionPattern<comp::CallOp>::OpConversionPattern;
 
@@ -71,11 +79,10 @@ struct LowerCallUnknownPattern : mlir::OpConversionPattern<comp::CallOp> {
 		}
 
 		if (callee.str() == "diff") {
-			// 这里的diff被认为必须有定义，且在ir的转换过程中就已被处理
+			// diff 已在 IR 生成阶段处理
 			return mlir::success();
 		}
 
-		// 这里“总是匹配”，作为最后一个 pattern
 		op.emitError() << "unsupported comp.call callee: " << callee;
 		return mlir::failure();
 	}
@@ -117,4 +124,4 @@ std::unique_ptr<mlir::Pass> createLowerCompCallPass() {
 	return std::make_unique<LowerCompCallPass>();
 }
 
-}
+} // namespace ezcompile

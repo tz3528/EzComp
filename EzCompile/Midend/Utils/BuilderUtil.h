@@ -1,4 +1,4 @@
-﻿//===-- BuilderUtil.h ------------------------------------------*- C++ -*-===//
+//===-- BuilderUtil.h ------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// Builder 工具函数
+// 提供 MLIR OpBuilder 的常用辅助函数
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,11 +19,12 @@
 
 namespace ezcompile {
 
+/// 创建常量索引值
 inline mlir::Value constIndex(mlir::OpBuilder &builder, mlir::Location location, int64_t value) {
 	return mlir::arith::ConstantIndexOp::create(builder, location, value);
 }
 
-// 将任何数值/索引值转换为 f64（用于 yield 值和坐标计算）
+/// 将任意数值类型转换为 f64（支持 float/index/integer）
 inline mlir::Value castToF64(mlir::OpBuilder& b, mlir::Location loc, mlir::Value v) {
 	mlir::Type t = v.getType();
 	mlir::Type f64 = b.getF64Type();
@@ -45,14 +47,13 @@ inline mlir::Value castToF64(mlir::OpBuilder& b, mlir::Location loc, mlir::Value
 	}
 
 	if (auto it = dyn_cast<mlir::IntegerType>(t)) {
-		// 整型只存在有符号整型
 		return mlir::arith::SIToFPOp::create(b, loc, f64, v);
 	}
 
-	// 应该不存在其它类型
 	llvm_unreachable("Unsupported type for castToF64");
 }
 
+/// 索引类型取模：index -> i64 -> rem -> index
 inline mlir::Value modIndex(mlir::OpBuilder &b,
 							  mlir::Location loc,
 							  mlir::Value ivIndex,
@@ -70,17 +71,13 @@ inline mlir::Value modIndex(mlir::OpBuilder &b,
 	mlir::Type idx = b.getIndexType();
 
 	mlir::Value cModI64 = mlir::arith::ConstantIntOp::create(b, loc, i64, modulus);
-
-	// index -> i64
 	mlir::Value ivI64 = mlir::arith::IndexCastOp::create(b, loc, i64, ivIndex);
-
-	// i64 % i64
 	mlir::Value rI64 = mlir::arith::RemSIOp::create(b, loc, ivI64, cModI64);
 
-	// i64 -> index
 	return mlir::arith::IndexCastOp::create(b, loc, idx, rI64);
 }
 
+/// 整数类型取模（不支持 index 类型）
 inline mlir::Value modInt64(mlir::OpBuilder &b,
 						  mlir::Location loc,
 						  mlir::Value ivInt,
@@ -91,7 +88,6 @@ inline mlir::Value modInt64(mlir::OpBuilder &b,
 		return {};
 	}
 
-	// 明确拒绝 index：只允许真正的 IntegerType
 	if (ivInt.getType().isIndex()) {
 		mlir::emitError(loc, "modInt: index type is not allowed; expected integer type");
 		return {};
@@ -103,13 +99,10 @@ inline mlir::Value modInt64(mlir::OpBuilder &b,
 		return {};
 	}
 
-	// modulus 常量使用同位宽类型（必要时会截断到该位宽）
 	mlir::Value cMod = mlir::arith::ConstantIntOp::create(b, loc, intTy, modulus);
-
-	// 整型同位宽取模，结果类型与 ivInt 相同
 	return mlir::arith::RemSIOp::create(b, loc, ivInt, cMod);
 }
 
-}
+} // namespace ezcompile
 
 #endif //EZ_COMPILE_BUILDER_UTIL_H

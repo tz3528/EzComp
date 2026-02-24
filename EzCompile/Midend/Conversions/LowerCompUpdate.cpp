@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// comp.update 降级实现
+// 将迭代更新操作降级为 Affine 循环嵌套 + memref.store
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,6 +27,13 @@
 
 namespace ezcompile {
 
+/// 降级 Pattern：将 comp.update 转换为循环嵌套 + 存储
+///
+/// 实现思路：
+/// 1. 根据 range 属性创建空间维度的循环嵌套
+/// 2. 内联 update 的 region 到循环体内
+/// 3. 降级 coord 和 sample 操作
+/// 4. 将 yield 值存储到 memref[time, space...]
 struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 	using OpConversionPattern<comp::UpdateOp>::OpConversionPattern;
 
@@ -34,8 +42,6 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 	                              mlir::ConversionPatternRewriter& rewriter) const override {
 		mlir::Location loc = op.getLoc();
 
-		// 1. 获取update的基本信息(field、memref、at_time)
-		auto field = op.getField();
 		mlir::memref::AllocOp alloc = getDefiningFieldOp(op.getField());
 		if (!alloc) {
 			return rewriter.notifyMatchFailure(op, "field is not backed by memref.alloc");
@@ -46,7 +52,7 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 			return rewriter.notifyMatchFailure(op, "field alloc is not a memref");
 		}
 
-		// 2. 降级update并生成循环
+		// 创建空间维度循环
 		mlir::SmallVector<mlir::Value, 8> argValues;
 		for (mlir::Attribute r : op.getOver()) {
 			auto range = dyn_cast<comp::RangeAttr>(r);
@@ -70,6 +76,7 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 
 		rewriter.inlineBlockBefore(&srcBlock, insertPt, argValues);
 
+		// 收集 coord、sample 和 yield
 		mlir::SmallVector<comp::CoordOp, 8> coords;
 		mlir::SmallVector<comp::SampleOp, 8> samples;
 		comp::YieldOp yieldOp;
@@ -88,7 +95,7 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 			cur = cur->getNextNode();
 		}
 		if (firstNonCoord == nullptr) {
-			return mlir::emitError(loc, "don`t have CoordOp");
+			return mlir::emitError(loc, "doesn't have CoordOp");
 		}
 		firstNonCoord = firstNonCoord->getNextNode();
 
@@ -99,13 +106,12 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 			return rewriter.notifyMatchFailure(op, "rhs comp.yield must have exactly 1 operand");
 		}
 
-		// 将插入点放在第一个非Coord操作的位置
+		// 降级 coord
 		mlir::Operation *hoistBefore = firstNonCoord ? firstNonCoord : yieldOp.getOperation();
 		rewriter.setInsertionPoint(hoistBefore);
 
-		// 降级Coord操作
 		for (comp::CoordOp c : coords) {
-			mlir::Value iv = c.getIv(); // 已通过内联 argValues 替换
+			mlir::Value iv = c.getIv();
 			mlir::Value coordVal = lowerCoord(rewriter, c.getLoc(), op, c.getDimAttr(), iv);
 			if (!coordVal) return mlir::failure();
 			c.replaceAllUsesWith(coordVal);
@@ -114,7 +120,7 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 			rewriter.eraseOp(c);
 		}
 
-		// 降级Sample操作
+		// 降级 sample
 		mlir::SmallVector<mlir::Value, 8> indices;
 		auto time_var = modIndex(rewriter, loc, op.getAtTime(), 2);
 		indices.emplace_back(time_var);
@@ -131,10 +137,9 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 			rewriter.eraseOp(s);
 		}
 
-		// 将插入点恢复到要创建 store 的位置（通常在 yield 位置）
+		// 存储 yield 值
 		rewriter.setInsertionPoint(yieldOp);
 
-		// 将 yield 值存储到 memref[time=0, space...]，然后删除 yield
 		mlir::Value yieldedF64 = castToF64(rewriter, yieldOp.getLoc(), yieldOp.getOperand(0));
 
 		mlir::memref::StoreOp::create(rewriter, yieldOp.getLoc(), yieldedF64, memref, indices);
@@ -160,9 +165,7 @@ struct LowerCompUpdatePass : mlir::PassWrapper<LowerCompUpdatePass, mlir::Operat
 
 		mlir::ConversionTarget target(*context);
 
-		// 标记 Affine, Arith 为合法
 		target.addLegalDialect<mlir::affine::AffineDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect>();
-		// 标记 comp.for_time 为非法，强制框架对其进行转换
 		target.addIllegalOp<comp::UpdateOp>();
 
 		mlir::RewritePatternSet patterns(context);
@@ -182,4 +185,4 @@ std::unique_ptr<mlir::Pass> createLowerCompUpdatePass() {
 	return std::make_unique<LowerCompUpdatePass>();
 }
 
-}
+} // namespace ezcompile

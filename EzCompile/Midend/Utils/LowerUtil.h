@@ -1,4 +1,4 @@
-﻿//===-- LowerUtil.h --------------------------------------------*- C++ -*-===//
+//===-- LowerUtil.h --------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// 降级工具函数
+// 提供降级 Pass 的通用辅助函数
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,7 +21,7 @@
 
 namespace ezcompile {
 
-/// --------- 穿透 unrealized cast 拿到对应的 alloc ---------
+/// 穿透 UnrealizedConversionCast 获取原始值
 inline mlir::Value stripCasts(mlir::Value v) {
 	while (auto cast = v.getDefiningOp<mlir::UnrealizedConversionCastOp>()) {
 		if (cast.getNumOperands() == 0) break;
@@ -29,19 +30,20 @@ inline mlir::Value stripCasts(mlir::Value v) {
 	return v;
 }
 
+/// 从字段值获取底层的 memref.alloc 操作
 inline mlir::memref::AllocOp getDefiningFieldOp(mlir::Value maybeFieldLike) {
 	mlir::Value base = stripCasts(maybeFieldLike);
 	return base.getDefiningOp<mlir::memref::AllocOp>();
 }
 
-// 附近通过符号引用查找 comp.dim
+/// 通过符号引用查找 comp.dim 操作
 inline comp::DimOp lookupDimOp(mlir::Operation* from, mlir::FlatSymbolRefAttr dimSym) {
 	if (!dimSym) return {};
 	mlir::Operation* sym = mlir::SymbolTable::lookupNearestSymbolFrom(from, dimSym.getAttr());
 	return dyn_cast_or_null<comp::DimOp>(sym);
 }
 
-// coord操作降级，计算方式为 lb + (ub - lb) * (index / (points - 1))
+/// 降级 coord 操作：coord = lb + (ub - lb) * (index / (points - 1))
 inline mlir::Value lowerCoord(mlir::OpBuilder& b, mlir::Location loc, mlir::Operation* anchorOp,
 							  mlir::FlatSymbolRefAttr dimSym, mlir::Value ivIndex) {
 	comp::DimOp dimOp = lookupDimOp(anchorOp, dimSym);
@@ -75,6 +77,7 @@ inline mlir::Value lowerCoord(mlir::OpBuilder& b, mlir::Location loc, mlir::Oper
 	return mlir::arith::AddFOp::create(b, loc, cLower, offset);
 }
 
+/// 降级 sample 操作：对 memref 应用偏移后加载
 inline mlir::Value lowerSample(mlir::OpBuilder& b, mlir::Location loc,
                                comp::SampleOp sampleOp,
                                mlir::ValueRange spatialIndices) {
@@ -89,14 +92,13 @@ inline mlir::Value lowerSample(mlir::OpBuilder& b, mlir::Location loc,
 
     llvm::ArrayRef<int64_t> shifts = sampleOp.getShift();
 
-    // 校验：运行时提供的空间索引数量必须与静态定义的 shift 数量一致
     if (spatialIndices.size() != shifts.size()) {
         sampleOp.emitError() << "spatial indices count (" << spatialIndices.size()
                              << ") does not match shift count (" << shifts.size() << ")";
         return {};
     }
 
-    // 遍历空间索引并应用偏移
+    // 应用偏移量到各维度索引
     for (auto it : llvm::zip(spatialIndices, shifts)) {
         mlir::Value iv = std::get<0>(it);
         int64_t shiftVal = std::get<1>(it);
@@ -112,6 +114,6 @@ inline mlir::Value lowerSample(mlir::OpBuilder& b, mlir::Location loc,
     return b.create<mlir::memref::LoadOp>(loc, memref, accessIndices);
 }
 
-}
+} // namespace ezcompile
 
 #endif //EZ_COMPILE_LOWER_UTIL_H

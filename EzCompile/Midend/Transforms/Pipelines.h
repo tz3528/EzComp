@@ -1,4 +1,4 @@
-﻿//===-- Pipelines.h --------------------------------------------*- C++ -*-===//
+//===-- Pipelines.h --------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// Pass 管线定义
+// 定义编译流程的降级和优化管线配置
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,35 +27,42 @@
 
 namespace ezcompile {
 
-/// Pipeline 选项
+/// Pipeline 选项，控制四阶段降级流程
 struct PipelineOptions : mlir::PassPipelineOptions<PipelineOptions> {
 
+	/// Comp 方言 → 基础方言 (Affine/Arith/MemRef)
 	Option<bool> enableLowerToBase{
 		*this, "comp-base",
-		llvm::cl::desc("Run canonicalize passes between lowering stages"),
+		llvm::cl::desc("Lower Comp dialect to base dialects"),
 		llvm::cl::init(false)};
 
+	/// Affine → SCF
 	Option<bool> enableAffineToSCF{
 		*this, "affine-scf",
 		llvm::cl::desc("Lower Affine dialect to SCF dialect"),
 		llvm::cl::init(false)};
 
+	/// SCF → ControlFlow
 	Option<bool> enableSCFToCF{
 		*this, "scf-cf",
 		llvm::cl::desc("Lower SCF dialect to ControlFlow dialect"),
 		llvm::cl::init(false)};
 
+	/// 基础方言 → LLVM 方言
 	Option<bool> enableToLLVM{
 		*this, "base-llvm",
-		llvm::cl::desc("Lower Math, Arith, MemRef, and CF to LLVM dialect"),
+		llvm::cl::desc("Lower base dialects to LLVM dialect"),
 		llvm::cl::init(false)};
-
 
 };
 
 void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt);
 
 void registerPipelines();
+
+//===----------------------------------------------------------------------===//
+// Pass
+//===----------------------------------------------------------------------===//
 
 std::unique_ptr<mlir::Pass> createLowerCompDimPass();
 std::unique_ptr<mlir::Pass> createLowerCompFieldPass();
@@ -67,6 +75,6 @@ std::unique_ptr<mlir::Pass> createLowerCompSolvePass();
 std::unique_ptr<mlir::Pass> createLowerCompProblemPass();
 std::unique_ptr<mlir::Pass> createLowerCompCallPass();
 
-}
+} // namespace ezcompile
 
 #endif //EZ_COMPILE_PIPELINES_H

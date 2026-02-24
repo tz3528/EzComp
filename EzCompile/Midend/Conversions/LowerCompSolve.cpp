@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// comp.solve 降级实现
+// 将求解操作内联展开为其子操作序列
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,6 +26,11 @@
 
 namespace ezcompile {
 
+/// 降级 Pattern：将 comp.solve 的三个 region 内联展开
+///
+/// 实现思路：
+/// 将 init、boundary、step 三个 region 中的操作依次移动到
+/// solve 操作之前的位置，保持原有顺序。
 struct LowerSolvePattern : mlir::OpConversionPattern<comp::SolveOp> {
 	using OpConversionPattern<comp::SolveOp>::OpConversionPattern;
 
@@ -32,8 +38,9 @@ struct LowerSolvePattern : mlir::OpConversionPattern<comp::SolveOp> {
 								  OpAdaptor adaptor,
 								  mlir::ConversionPatternRewriter& rewriter) const override {
 		mlir::Block *parentBlock = op->getBlock();
-		mlir::Block::iterator insertIt(op); // 初始插入点：solve 之前
+		mlir::Block::iterator insertIt(op);
 
+		// 内联单 block region 的辅助函数
 		auto moveSingleBlockRegionOps = [&](mlir::Region &region) -> mlir::LogicalResult {
 			if (region.empty())
 				return mlir::success();
@@ -44,7 +51,6 @@ struct LowerSolvePattern : mlir::OpConversionPattern<comp::SolveOp> {
 
 			mlir::Block &srcBlock = region.front();
 
-			// 逐个 operation 搬运，保持原有顺序：
 			while (!srcBlock.empty()) {
 				mlir::Operation *toMove = &srcBlock.front();
 				toMove->moveBefore(parentBlock, insertIt);
@@ -103,4 +109,4 @@ std::unique_ptr<mlir::Pass> createLowerCompSolvePass() {
 	return std::make_unique<LowerCompSolvePass>();
 }
 
-}
+} // namespace ezcompile
