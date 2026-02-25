@@ -154,9 +154,14 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
             auto points = static_cast<int64_t>(dimOp.getPoints());
 
             auto forOp = rewriter.create<mlir::affine::AffineForOp>(loc, 0, points, 1);
-            indicesMap[d] = forOp.getInductionVar();
-
             rewriter.setInsertionPointToStart(forOp.getBody());
+            if (d == time_var) {
+            	indicesMap[d] = modIndex(rewriter, loc, forOp.getInductionVar(), 2);
+            }
+            else {
+				indicesMap[d] = forOp.getInductionVar();
+            }
+
             return buildLoopNest(dimIdx + 1, indicesMap);
         };
 
@@ -166,8 +171,9 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
             mlir::DenseMap<mlir::Attribute, mlir::Value> dimIndexVal;
 
             for (auto& kv : fixed) {
-                if (auto d = dyn_cast<mlir::FlatSymbolRefAttr>(kv.first))
-                    dimIndexVal[d] = constIndex(rewriter, loc, kv.second);
+                if (auto d = dyn_cast<mlir::FlatSymbolRefAttr>(kv.first)) {
+	                dimIndexVal[d] = constIndex(rewriter, loc, kv.second);
+                }
             }
 
             if(time_var) dimIndexVal[time_var] = constIndex(rewriter, loc, 0);
@@ -183,8 +189,9 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
             mlir::DenseMap<mlir::Attribute, mlir::Value> dimIndexVal;
 
             for (auto& kv : fixed) {
-                if (auto d = dyn_cast<mlir::FlatSymbolRefAttr>(kv.first))
-                    dimIndexVal[d] = constIndex(rewriter, loc, kv.second);
+                if (auto d = dyn_cast<mlir::FlatSymbolRefAttr>(kv.first)) {
+	                dimIndexVal[d] = constIndex(rewriter, loc, kv.second);
+                }
             }
 
 			mlir::Value timeIV = bodyBlock->getArgument(0);
