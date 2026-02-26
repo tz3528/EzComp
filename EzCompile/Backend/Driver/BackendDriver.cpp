@@ -23,6 +23,7 @@
 
 #include "BackendDriver.h"
 #include "Target/CodeEmitter.h"
+#include "Link/Linker.h"
 
 namespace ezcompile {
 
@@ -37,14 +38,6 @@ mlir::LogicalResult Backend::codeGen(llvm::Module &module,
                                       const std::string &outputPath) {
     target::CodeEmitter emitter(targetMachine);
     return emitter.emit(module, outputPath, target::OutputFileType::ObjectFile);
-}
-
-mlir::LogicalResult Backend::link(const std::string &objectFile,
-                                   const std::string &outputFile) {
-    // TODO: 实现链接
-    // 调用系统链接器生成可执行文件
-    llvm::errs() << "Link: TODO - 尚未实现\n";
-    return mlir::success();
 }
 
 mlir::LogicalResult Backend::fullCompile(llvm::Module &module) {
@@ -92,7 +85,7 @@ mlir::LogicalResult Backend::fullCompile(llvm::Module &module) {
     }
 
     // 链接
-    if (mlir::failed(link(objFile, exeFile))) {
+    if (mlir::failed(link::Linker::linkModule(module, objFile, exeFile, tripleStr))) {
         return mlir::failure();
     }
 
@@ -101,14 +94,10 @@ mlir::LogicalResult Backend::fullCompile(llvm::Module &module) {
 }
 
 mlir::LogicalResult Backend::run(mlir::ModuleOp &module) {
-    // 创建 LLVM Context 并翻译 MLIR -> LLVM IR
     llvm::LLVMContext llvmContext;
     auto llvmModule = translate(module, llvmContext);
-    if (!llvmModule) {
-        return mlir::failure();
-    }
+    if (!llvmModule) return mlir::failure();
 
-    // 根据模式执行不同流程
     switch (config.mode) {
     case backend::CompileMode::DumpLLVMIR:
         dumpLLVMIR(*llvmModule);
@@ -116,7 +105,6 @@ mlir::LogicalResult Backend::run(mlir::ModuleOp &module) {
     case backend::CompileMode::FullCompile:
         return fullCompile(*llvmModule);
     }
-
     return mlir::failure();
 }
 
