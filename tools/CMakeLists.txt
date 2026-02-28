@@ -34,6 +34,7 @@ target_link_libraries(ezcomp PRIVATE
         MLIRArithDialect
         MLIRControlFlowDialect
         MLIRFuncDialect
+        MLIRFuncInlinerExtension
         MLIRLLVMDialect
         MLIRMathDialect
         MLIRMemRefDialect
@@ -48,7 +49,6 @@ target_link_libraries(ezcomp PRIVATE
         MLIRFuncToLLVM
         MLIRMathToLLVM
         MLIRMemRefToLLVM
-        MLIRRegisterAllExtensions
         MLIRSCFToControlFlow
         MLIRUBToLLVM
 )

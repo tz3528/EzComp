@@ -4,11 +4,13 @@
 add_library(Backend STATIC)
 
 # 2. LLVM 依赖
+# LLVM_TARGETS_TO_BUILD: LLVM 编译时配置的目标后端列表
 llvm_map_components_to_libnames(llvm_libs
         Support
         Core
         Target
         IRReader
+        ${LLVM_TARGETS_TO_BUILD}
 )
 
 # 3. 链接依赖

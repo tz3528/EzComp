@@ -20,19 +20,24 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
+#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
-#include "mlir/InitAllExtensions.h"
 #include "mlir/IR/AsmState.h"
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 #include "EzCompile/Frontend/include/Parser.h"
 #include "EzCompile/Frontend/include/AST.h"
@@ -45,6 +50,19 @@
 
 namespace cl = llvm::cl;
 using namespace ezcompile;
+
+/// 仅注册项目需要的 LLVM 转换扩展，避免链接不需要的库
+static void registerNeededExtensions(mlir::DialectRegistry &registry) {
+    // LLVM 转换扩展
+    mlir::arith::registerConvertArithToLLVMInterface(registry);
+    mlir::cf::registerConvertControlFlowToLLVMInterface(registry);
+    mlir::registerConvertFuncToLLVMInterface(registry);
+    mlir::registerConvertMathToLLVMInterface(registry);
+    mlir::registerConvertMemRefToLLVMInterface(registry);
+    mlir::ub::registerConvertUBToLLVMInterface(registry);
+    // Func 内联扩展
+    mlir::func::registerInlinerExtension(registry);
+}
 
 static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::desc("<input toy file>"),
@@ -151,7 +169,7 @@ static int dumpMLIR() {
     auto parse_module = moduleAST.get();
 
     mlir::DialectRegistry registry;
-    mlir::registerAllExtensions(registry);
+    registerNeededExtensions(registry);
     mlir::MLIRContext context(registry);
     LoadDialect(context);
 
@@ -198,7 +216,7 @@ static int dumpLLVMIR() {
     }
 
     mlir::DialectRegistry registry;
-    mlir::registerAllExtensions(registry);
+    registerNeededExtensions(registry);
     mlir::MLIRContext context(registry);
     LoadDialect(context);
 
@@ -259,7 +277,7 @@ static int compile() {
     }
 
     mlir::DialectRegistry registry;
-    mlir::registerAllExtensions(registry);
+    registerNeededExtensions(registry);
     mlir::MLIRContext context(registry);
     LoadDialect(context);
 
@@ -309,8 +327,6 @@ static int compile() {
 }
 
 int main(int argc, char **argv) {
-    mlir::DialectRegistry registry;
-
     // Register any command line options.
     mlir::registerAsmPrinterCLOptions();
     mlir::registerMLIRContextCLOptions();
@@ -327,10 +343,9 @@ int main(int argc, char **argv) {
         return dumpLLVMIR();
     case Action::Compile:
         return compile();
-    default:
-        llvm::errs() << "No action specified (parsing only?), use -emit=<action>\n";
+    case Action::None:
+        llvm::errs() << "No action specified, use --emit=<action>\n";
+        return 1;
     }
-
-    return mlir::asMainReturnCode(mlir::MlirOptMain(
-        argc, argv, "Minimal Standalone optimizer driver\n", registry));
+    return 1;
 }
