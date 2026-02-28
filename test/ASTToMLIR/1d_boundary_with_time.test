@@ -1,0 +1,62 @@
+#===-- 1d_boundary_with_time.test -----------------------------*-- Comp -*-===#
+#
+# 1D: 边界方程右侧有时间信息
+# u(0,t) = sin(t) → 边界条件依赖时间
+#
+#===------------------------------------------------------------------------===#
+
+# RUN: %ezcomp %s --emit=mlir | FileCheck %s
+
+# ===== 顶层结构 =====
+# CHECK-LABEL: comp.problem
+# CHECK: comp.dim @t
+# CHECK: comp.dim @x
+# CHECK: comp.field @u(spaceDims = [@x], timeDim = @t)
+# CHECK: comp.solve
+
+# ===== 初始化块 =====
+# CHECK-LABEL: comp.apply_init
+# CHECK: comp.coord @x
+# CHECK: comp.coord @t
+# CHECK: comp.yield
+
+# ===== 边界条件块：第一个边界条件包含 sin(t) 调用 =====
+# CHECK-LABEL: comp.dirichlet
+# CHECK: comp.coord @t
+# CHECK: comp.coord @x
+# CHECK: comp.call @sin
+# CHECK: comp.yield {{.*}} : f64
+
+# ===== 第二个边界条件 =====
+# CHECK: comp.dirichlet
+# CHECK: comp.coord @t
+# CHECK: comp.coord @x
+# CHECK: comp.yield
+
+# ===== 迭代块 =====
+# CHECK-LABEL: comp.for_time
+# CHECK: comp.coord @t
+# CHECK: comp.update
+# CHECK-DAG: comp.sample {{.*}} dims = [@t, @x] shift = [0, 0]
+# CHECK-DAG: comp.sample {{.*}} dims = [@t, @x] shift = [1, 0]
+# CHECK: comp.yield
+
+declarations {
+    x[0,100,101];
+    t[0,50,51];
+}
+
+equations {
+    u(x,0) = 0;
+    u(0,t) = sin(t);
+    u(100,t) = 0;
+    u(x,t+1) = u(x,t);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,t)";
+    timeVar:"t";
+}
