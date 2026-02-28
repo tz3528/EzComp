@@ -34,24 +34,15 @@ public:
     explicit Backend(const backend::BackendConfig &config = backend::BackendConfig::forDumpLLVMIR())
         : config(config) {}
 
-    /// 执行后端编译流程
     mlir::LogicalResult run(mlir::ModuleOp &module);
 
 private:
     backend::BackendConfig config;
 
-    /// 完整编译流程（代码生成 + 链接）
     mlir::LogicalResult fullCompile(llvm::Module &module);
-
-    /// 代码生成 (LLVM IR -> 目标代码)
     mlir::LogicalResult codeGen(llvm::Module &module,
                                  llvm::TargetMachine &targetMachine,
                                  const std::string &outputPath);
-
-    /// 链接生成可执行文件
-    mlir::LogicalResult link(const std::string &objectFile, const std::string &outputFile);
-
-    /// 输出 LLVM IR 到标准输出
     void dumpLLVMIR(llvm::Module &module);
 };
 

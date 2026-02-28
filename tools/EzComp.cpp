@@ -299,7 +299,7 @@ static int compile() {
     }
 
     // FullCompile 模式：使用命令行选项进行完整编译
-    Backend backend(backend::BackendConfig::fromCommandLine());
+    Backend backend(backend::BackendConfig::fromCommandLine(inputFilename));
 
     if (mlir::failed(backend.run(*mo))) {
         return 4;

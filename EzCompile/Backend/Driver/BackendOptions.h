@@ -15,6 +15,7 @@
 #define EZ_COMPILE_BACKEND_OPTIONS_H
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Path.h"
 #include <string>
 
 namespace ezcompile::backend {
@@ -90,7 +91,8 @@ struct BackendConfig {
     std::string outputFileVal;
 
     /// 从命令行选项创建配置（用于 FullCompile 模式）
-    static BackendConfig fromCommandLine();
+    /// @param inputFile 输入文件名，用于生成默认输出文件名
+    static BackendConfig fromCommandLine(llvm::StringRef inputFile = "");
 
     /// 创建 DumpLLVMIR 模式的默认配置
     static BackendConfig forDumpLLVMIR() {
@@ -100,14 +102,27 @@ struct BackendConfig {
     }
 };
 
-inline BackendConfig BackendConfig::fromCommandLine() {
+inline BackendConfig BackendConfig::fromCommandLine(llvm::StringRef inputFile) {
     BackendConfig config;
     config.mode = CompileMode::FullCompile;
     config.optLevelVal = optLevel.getValue();
     config.targetTripleVal = targetTriple.getValue();
     config.targetCPUVal = targetCPU.getValue();
     config.targetFeaturesVal = targetFeatures.getValue();
-    config.outputFileVal = outputFile.getValue();
+    
+    // 如果用户未指定输出文件名，则基于输入文件名生成默认值
+    if (outputFile.empty() && !inputFile.empty()) {
+        llvm::StringRef baseName = inputFile;
+        // 去掉 .comp 后缀
+        if (baseName.ends_with(".comp")) {
+            baseName = baseName.drop_back(5);
+        }
+        // 去掉路径，只保留文件名
+        baseName = llvm::sys::path::filename(baseName);
+        config.outputFileVal = baseName.str();
+    } else {
+        config.outputFileVal = outputFile.getValue();
+    }
     return config;
 }
 
