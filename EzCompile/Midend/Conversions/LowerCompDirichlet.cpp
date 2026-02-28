@@ -16,6 +16,7 @@
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
@@ -202,7 +203,7 @@ struct LowerCompDirichletPass : mlir::PassWrapper<LowerCompDirichletPass, mlir::
 	MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerCompDirichletPass)
 
 	void getDependentDialects(mlir::DialectRegistry& registry) const override {
-		registry.insert<mlir::arith::ArithDialect, mlir::memref::MemRefDialect, comp::CompDialect>();
+		registry.insert<mlir::arith::ArithDialect, mlir::memref::MemRefDialect, comp::CompDialect, mlir::math::MathDialect>();
 	}
 
 	mlir::StringRef getArgument() const override { return "lower-comp-dirichlet"; }
@@ -213,7 +214,7 @@ struct LowerCompDirichletPass : mlir::PassWrapper<LowerCompDirichletPass, mlir::
 
 		mlir::ConversionTarget target(*context);
 
-		target.addLegalDialect<mlir::affine::AffineDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect>();
+		target.addLegalDialect<mlir::affine::AffineDialect, mlir::memref::MemRefDialect, mlir::arith::ArithDialect, mlir::math::MathDialect>();
 		target.addIllegalOp<comp::DirichletOp>();
 
 		mlir::RewritePatternSet patterns(context);

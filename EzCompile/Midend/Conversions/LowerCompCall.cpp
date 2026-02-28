@@ -40,7 +40,7 @@ struct LowerCallDeltaPattern : mlir::OpConversionPattern<comp::CallOp> {
 		mlir::Location loc = op.getLoc();
 
 		if (op.getCallee().str() != "delta") {
-			return mlir::emitError(loc, "not delta");
+			return rewriter.notifyMatchFailure(op, "not delta");
 		}
 
 		if (adaptor.getOperands().size() != 2) {
@@ -59,6 +59,92 @@ struct LowerCallDeltaPattern : mlir::OpConversionPattern<comp::CallOp> {
 		return mlir::success();
 	}
 };
+
+//===----------------------------------------------------------------------===//
+// 三角函数降级 Pattern
+//===----------------------------------------------------------------------===//
+
+/// 单参数三角函数降级模板
+/// 支持 sin, cos, tan, asin, acos, atan
+template <typename MathOp>
+struct LowerCallUnaryTrigPattern : mlir::OpConversionPattern<comp::CallOp> {
+	using OpConversionPattern<comp::CallOp>::OpConversionPattern;
+
+	llvm::StringRef funcName;
+
+	LowerCallUnaryTrigPattern(mlir::MLIRContext *context, llvm::StringRef name)
+		: OpConversionPattern<comp::CallOp>(context, 1), funcName(name) {}
+
+	mlir::LogicalResult matchAndRewrite(comp::CallOp op,
+										OpAdaptor adaptor,
+										mlir::ConversionPatternRewriter &rewriter) const override {
+		mlir::Location loc = op.getLoc();
+
+		if (op.getCallee() != funcName) {
+			return rewriter.notifyMatchFailure(op, "not " + funcName);
+		}
+
+		if (adaptor.getOperands().size() != 1) {
+			return mlir::emitError(loc, funcName) << " expects 1 operand";
+		}
+
+		mlir::Value arg = adaptor.getOperands()[0];
+		mlir::Value arg_f = castToF64(rewriter, loc, arg);
+
+		mlir::Value result = rewriter.create<MathOp>(loc, arg_f);
+
+		rewriter.replaceOp(op, result);
+		return mlir::success();
+	}
+};
+
+/// 双参数三角函数降级模板
+/// 支持 atan2
+template <typename MathOp>
+struct LowerCallBinaryTrigPattern : mlir::OpConversionPattern<comp::CallOp> {
+	using OpConversionPattern<comp::CallOp>::OpConversionPattern;
+
+	llvm::StringRef funcName;
+
+	LowerCallBinaryTrigPattern(mlir::MLIRContext *context, llvm::StringRef name)
+		: OpConversionPattern<comp::CallOp>(context, 1), funcName(name) {}
+
+	mlir::LogicalResult matchAndRewrite(comp::CallOp op,
+										OpAdaptor adaptor,
+										mlir::ConversionPatternRewriter &rewriter) const override {
+		mlir::Location loc = op.getLoc();
+
+		if (op.getCallee() != funcName) {
+			return rewriter.notifyMatchFailure(op, "not " + funcName);
+		}
+
+		if (adaptor.getOperands().size() != 2) {
+			return mlir::emitError(loc, funcName) << " expects 2 operands";
+		}
+
+		mlir::Value arg0 = adaptor.getOperands()[0];
+		mlir::Value arg1 = adaptor.getOperands()[1];
+
+		mlir::Value arg0_f = castToF64(rewriter, loc, arg0);
+		mlir::Value arg1_f = castToF64(rewriter, loc, arg1);
+
+		mlir::Value result = rewriter.create<MathOp>(loc, arg0_f, arg1_f);
+
+		rewriter.replaceOp(op, result);
+		return mlir::success();
+	}
+};
+
+// 单参数三角函数 Pattern 别名
+using LowerCallSinPattern = LowerCallUnaryTrigPattern<mlir::math::SinOp>;
+using LowerCallCosPattern = LowerCallUnaryTrigPattern<mlir::math::CosOp>;
+using LowerCallTanPattern = LowerCallUnaryTrigPattern<mlir::math::TanOp>;
+using LowerCallAsinPattern = LowerCallUnaryTrigPattern<mlir::math::AsinOp>;
+using LowerCallAcosPattern = LowerCallUnaryTrigPattern<mlir::math::AcosOp>;
+using LowerCallAtanPattern = LowerCallUnaryTrigPattern<mlir::math::AtanOp>;
+
+// 双参数三角函数 Pattern 别名
+using LowerCallAtan2Pattern = LowerCallBinaryTrigPattern<mlir::math::Atan2Op>;
 
 /// 降级 Pattern：处理未知的 comp.call
 ///
@@ -103,11 +189,20 @@ struct LowerCompCallPass : mlir::PassWrapper<LowerCompCallPass, mlir::OperationP
 
 		mlir::ConversionTarget target(*context);
 
-		target.addLegalDialect<mlir::math::MathDialect, mlir::arith::ArithDialect>();
+		target.addLegalDialect<mlir::math::MathDialect, mlir::arith::ArithDialect, comp::CompDialect>();
 		target.addIllegalOp<comp::CallOp>();
 
 		mlir::RewritePatternSet patterns(context);
 		patterns.add<LowerCallDeltaPattern>(context);
+		// 三角函数降级 Pattern
+		patterns.add<LowerCallSinPattern>(context, "sin");
+		patterns.add<LowerCallCosPattern>(context, "cos");
+		patterns.add<LowerCallTanPattern>(context, "tan");
+		patterns.add<LowerCallAsinPattern>(context, "asin");
+		patterns.add<LowerCallAcosPattern>(context, "acos");
+		patterns.add<LowerCallAtanPattern>(context, "atan");
+		patterns.add<LowerCallAtan2Pattern>(context, "atan2");
+		// 未知调用处理
 		patterns.add<LowerCallUnknownPattern>(context);
 
 		if (mlir::failed(applyPartialConversion(module, target, std::move(patterns)))) {
