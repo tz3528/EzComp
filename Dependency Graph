@@ -1,5 +1,0 @@
-digraph "Dependency Graph" {
-	label="Dependency Graph";
-
-	Node0x85d03fe4e0 [shape=record,label="{}"];
-}
