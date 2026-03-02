@@ -21,6 +21,8 @@
 #include "BackendOptions.h"
 
 #include <memory>
+#include <vector>
+#include <string>
 
 namespace llvm {
 class Module;
@@ -35,6 +37,9 @@ public:
         : config(config) {}
 
     mlir::LogicalResult run(mlir::ModuleOp &module);
+    
+    /// 获取链接所需的 archive 列表
+    static std::vector<std::string> getRequiredArchives();
 
 private:
     backend::BackendConfig config;

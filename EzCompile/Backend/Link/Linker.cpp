@@ -14,6 +14,8 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/JSON.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 #include <array>
 
@@ -37,6 +39,98 @@ static const char* mathFunctions[] = {
     "llvm.exp.f32", "llvm.exp.f64", "llvm.log.f32", "llvm.log.f64",
     nullptr
 };
+
+//===----------------------------------------------------------------------===//
+// ManifestParser
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult ManifestParser::load(const fs::path& path, ManifestParser& parser) {
+    // 检查文件是否存在
+    if (!fs::exists(path)) {
+        llvm::errs() << "Manifest file not found: " << path << "\n";
+        return mlir::failure();
+    }
+    
+    // 读取文件内容
+    auto bufferOrError = llvm::MemoryBuffer::getFile(path.string());
+    if (auto ec = bufferOrError.getError()) {
+        llvm::errs() << "Error reading manifest file: " << ec.message() << "\n";
+        return mlir::failure();
+    }
+    
+    // 解析 JSON
+    auto jsonOrError = llvm::json::parse(bufferOrError.get()->getBuffer());
+    if (auto ec = jsonOrError.takeError()) {
+        llvm::errs() << "Error parsing manifest JSON: " << ec << "\n";
+        return mlir::failure();
+    }
+    
+    llvm::json::Object* root = jsonOrError->getAsObject();
+    if (!root) {
+        llvm::errs() << "Manifest JSON root is not an object\n";
+        return mlir::failure();
+    }
+    
+    // 解析 version
+    if (auto* versionVal = root->get("version")) {
+        if (auto version = versionVal->getAsInteger()) {
+            parser.version_ = *version;
+        }
+    }
+    
+    // 解析 archives
+    if (auto* archivesObj = root->getObject("archives")) {
+        for (auto& [key, value] : *archivesObj) {
+            if (auto strVal = value.getAsString()) {
+                parser.archives_[key.str()] = strVal->str();
+            }
+        }
+    }
+    
+    return mlir::success();
+}
+
+mlir::LogicalResult ManifestParser::getString(const std::string& key, std::string& value) const {
+    // 支持嵌套 key，用 '/' 分隔
+    size_t slashPos = key.find('/');
+    
+    if (slashPos == std::string::npos) {
+        // 顶层 key
+        // 目前只支持 version 和 archives 两种顶层 key
+        if (key == "version") {
+            value = std::to_string(version_);
+            return mlir::success();
+        }
+        return mlir::failure();
+    }
+    
+    // 嵌套 key: "archives/xxx"
+    std::string topKey = key.substr(0, slashPos);
+    std::string subKey = key.substr(slashPos + 1);
+    
+    if (topKey == "archives") {
+        auto it = archives_.find(subKey);
+        if (it != archives_.end()) {
+            value = it->second;
+            return mlir::success();
+        }
+    }
+    
+    return mlir::failure();
+}
+
+mlir::LogicalResult ManifestParser::getArchivePath(const std::string& key, std::string& archive) const {
+    auto it = archives_.find(key);
+    if (it == archives_.end()) {
+        llvm::errs() << "Archive not found: " << key << "\n";
+        return mlir::failure();
+    }
+    
+    // 拼接 baseDir + value
+    fs::path fullPath = baseDir / it->second;
+    archive = fullPath.string();
+    return mlir::success();
+}
 
 //===----------------------------------------------------------------------===//
 // LibraryDetector
@@ -104,14 +198,19 @@ std::vector<std::string> Linker::buildCommandLine() const {
         args.push_back("-target");
         args.push_back(config.targetTriple);
     }
+
+    args.push_back(config.objectFile);
     
     args.push_back("-o");
     args.push_back(config.outputFile);
+
+    for (const auto &a : config.archives) {
+        args.push_back(a);
+    }
     
-    for (const auto &lib : config.libraries)
+    for (const auto &lib : config.libraries) {
         args.push_back("-l" + lib);
-    
-    args.push_back(config.objectFile);
+    }
     
     if (config.verbose) args.push_back("-v");
     
@@ -145,7 +244,14 @@ mlir::LogicalResult Linker::run() {
 mlir::LogicalResult Linker::linkModule(llvm::Module &module,
                                         const std::string &objectFile,
                                         const std::string &outputFile,
-                                        const std::string &targetTriple) {
+                                        const std::string &targetTriple,
+                                        const std::vector<std::string> archives) {
+    // 加载 manifest JSON
+    ManifestParser parser;
+    if (mlir::failed(ManifestParser::load(manifestPath, parser))) {
+        return mlir::failure();
+    }
+    
     auto detected = LibraryDetector::detect(module, targetTriple);
     
     if (!detected.libraries.empty()) {
@@ -161,6 +267,15 @@ mlir::LogicalResult Linker::linkModule(llvm::Module &module,
     config.targetTriple = targetTriple;
     config.libraries = std::vector<std::string>(detected.libraries.begin(), 
                                                  detected.libraries.end());
+    
+    // 解析 archive key 为完整路径
+    for (const auto& key : archives) {
+        std::string archivePath;
+        if (mlir::failed(parser.getArchivePath(key, archivePath))) {
+            return mlir::failure();
+        }
+        config.archives.push_back(archivePath);
+    }
     
     return Linker(config).run();
 }

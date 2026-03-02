@@ -27,7 +27,12 @@ target_include_directories(Backend PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# 5. 添加子模块
+# 5. 设置json配置文件的路径
+target_compile_definitions(Backend PRIVATE
+        EZ_RUNTIME_MANIFEST_ABS_PATH="${CMAKE_BINARY_DIR}/EzComputeRuntime.manifest.json"
+)
+
+# 6. 添加子模块
 add_subdirectory(Driver)
 add_subdirectory(Link)
 add_subdirectory(Target)
