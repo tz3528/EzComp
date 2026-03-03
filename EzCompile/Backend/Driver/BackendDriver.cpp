@@ -69,7 +69,7 @@ mlir::LogicalResult Backend::fullCompile(llvm::Module &module) {
 
     // 创建 TargetMachine
     llvm::TargetOptions opt;
-    std::optional<llvm::Reloc::Model> rm;
+    std::optional<llvm::Reloc::Model> rm = llvm::Reloc::PIC_;
     std::string cpu = config.targetCPUVal.empty() ? "generic" : config.targetCPUVal;
 
     llvm::Triple triple(tripleStr);
