@@ -54,12 +54,16 @@ public:
     /// 获取所有 archives 映射
     const std::map<std::string, std::string>& getArchives() const { return archives_; }
     
+    /// 获取所有库依赖
+    const std::vector<std::string>& getLibraries() const { return libraries_; }
+    
     /// 获取版本号
     int getVersion() const { return version_; }
 
 private:
     int version_ = 0;
     std::map<std::string, std::string> archives_;
+    std::vector<std::string> libraries_;
 };
 
 /// 检测到的库依赖

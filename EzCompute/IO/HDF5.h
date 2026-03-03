@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-//
+// HDF5 输出接口
+// 函数签名匹配 MLIR memref 展开后的字段顺序
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,54 +17,49 @@
 
 #include <cstdint>
 
-namespace ezcompute {
-
-// 这是 MLIR lowering 到 LLVM 时常用的“strided memref descriptor”形态：
-// - strides/sizes 单位是“元素个数”（不是字节）
-// - data 是对齐后的可用指针；offset 是逻辑偏移
-template <typename T, int Rank>
-struct StridedMemRefType {
-    T* basePtr;
-    T* data;
-    int64_t offset;
-    int64_t sizes[Rank];
-    int64_t strides[Rank];
-};
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // 说明：
+// - 函数参数对应 MLIR memref 展开后的字段：
+//   (basePtr, data, offset, sizes[0..rank-1], strides[0..rank-1], timeIndex, dimNames, lowers, uppers)
 // - Rank 是 memref 的维数：第 0 维是 time-layer（例如 2），后面 (Rank-1) 维是空间维。
-// - timeIndex 是你传入的时间下标 n（或 layer 也行），内部用 layer = timeIndex % sizes[0] 选择要输出的那层。
-// - dimNames/lowers/uppers 只描述“空间维”(Rank-1 个)，顺序保证与你内存维度使用顺序一致。
-// - points 不需要额外传：直接用 memref 的 sizes[1..]。
-// - 输出：当前工作目录下的 result.h5，覆盖旧文件；主数据集路径是 "/result"。
+// - timeIndex 是时间下标，内部用 layer = timeIndex % sizes[0] 选择要输出的那层。
+// - dimNames/lowers/uppers 只描述"空间维"(Rank-1 个)。
+// - 输出：当前工作目录下的 result.h5。
 //
 // 返回：0 成功；负数失败。
-int dump_result_hdf5_f64_rank2(const StridedMemRefType<double, 2>* memref,
-                               int64_t timeIndex,
-                               const char* const* dimNames,
-                               const double* lowers,
-                               const double* uppers);
 
-int dump_result_hdf5_f64_rank3(const StridedMemRefType<double, 3>* memref,
-                               int64_t timeIndex,
-                               const char* const* dimNames,
-                               const double* lowers,
-                               const double* uppers);
+int dump_result_hdf5_f64_rank2(
+    double* basePtr, double* data, int64_t offset,
+    int64_t size0, int64_t size1,
+    int64_t stride0, int64_t stride1,
+    int64_t timeIndex,
+    const char* const* dimNames,
+    const double* lowers,
+    const double* uppers);
 
-int dump_result_hdf5_f64_rank4(const StridedMemRefType<double, 4>* memref,
-                               int64_t timeIndex,
-                               const char* const* dimNames,
-                               const double* lowers,
-                               const double* uppers);
+int dump_result_hdf5_f64_rank3(
+    double* basePtr, double* data, int64_t offset,
+    int64_t size0, int64_t size1, int64_t size2,
+    int64_t stride0, int64_t stride1, int64_t stride2,
+    int64_t timeIndex,
+    const char* const* dimNames,
+    const double* lowers,
+    const double* uppers);
+
+int dump_result_hdf5_f64_rank4(
+    double* basePtr, double* data, int64_t offset,
+    int64_t size0, int64_t size1, int64_t size2, int64_t size3,
+    int64_t stride0, int64_t stride1, int64_t stride2, int64_t stride3,
+    int64_t timeIndex,
+    const char* const* dimNames,
+    const double* lowers,
+    const double* uppers);
 
 #ifdef __cplusplus
-} // extern "C"s
-#endif
-
 }
+#endif
 
 #endif // EZ_COMPUTE_IO_HDF5_H

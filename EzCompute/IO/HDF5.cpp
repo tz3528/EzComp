@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// 
+// HDF5 输出实现
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,10 +19,9 @@
 
 #include "HDF5.h"
 
-namespace ezcompute {
+namespace {
 
 // 把维度名做一个安全化：只保留 [A-Za-z0-9_]，其它字符替换成 '_'。
-// 避免 HDF5 路径名/属性名出现奇怪字符。
 static std::string sanitizeName(const char* s, int fallbackIdx) {
     if (!s || !*s) return "dim" + std::to_string(fallbackIdx);
     std::string out;
@@ -108,9 +107,6 @@ static bool write_coords_1d(hid_t file,
     hid_t space = H5Screate_simple(1, dims, nullptr);
     if (space < 0) return false;
 
-    // 若已存在同名数据集，先删掉（因为文件是 TRUNC 理论上不会存在，但写稳一点）。
-    H5Ldelete(file, dsName.c_str(), H5P_DEFAULT);
-
     hid_t dset = H5Dcreate2(file, dsName.c_str(), H5T_NATIVE_DOUBLE, space,
                             H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     if (dset < 0) { H5Sclose(space); return false; }
@@ -124,16 +120,19 @@ static bool write_coords_1d(hid_t file,
 
 // 模板实现：Rank = memref rank（time-layer + space dims）
 template <int Rank>
-static int dump_impl(const StridedMemRefType<double, Rank>* m,
+static int dump_impl(double* data,
+                     int64_t offset,
+                     const int64_t* sizes,
+                     const int64_t* strides,
                      int64_t timeIndex,
                      const char* const* dimNames,
                      const double* lowers,
                      const double* uppers) {
     static_assert(Rank >= 2, "memref 至少需要 [timeLayer, space...] 两维");
 
-    if (!m || !m->data) return -1;
+    if (!data) return -1;
 
-    const int64_t timeLayers = m->sizes[0];
+    const int64_t timeLayers = sizes[0];
     if (timeLayers <= 0) return -2;
 
     // 你传入的是时间下标 n：这里统一映射到 layer（对 2-layer 就是 mod 2）
@@ -147,7 +146,7 @@ static int dump_impl(const StridedMemRefType<double, Rank>* m,
     int64_t spatialCount = 1;
     hsize_t dims[SRank];
     for (int i = 0; i < SRank; ++i) {
-        int64_t sz = m->sizes[i + 1];
+        int64_t sz = sizes[i + 1];
         if (sz <= 0) return -4;
         spatialCount *= sz;
         dims[i] = static_cast<hsize_t>(sz);
@@ -159,16 +158,16 @@ static int dump_impl(const StridedMemRefType<double, Rank>* m,
     std::vector<int64_t> iv(SRank, 0);
 
     for (int64_t linear = 0; linear < spatialCount; ++linear) {
-        int64_t idx = m->offset + layer * m->strides[0];
+        int64_t idx = offset + layer * strides[0];
         for (int k = 0; k < SRank; ++k) {
-            idx += iv[k] * m->strides[k + 1];
+            idx += iv[k] * strides[k + 1];
         }
-        out[static_cast<size_t>(linear)] = m->data[idx];
+        out[static_cast<size_t>(linear)] = data[idx];
 
-        // 以“最后一维最快”的顺序递增 iv（与常见 row-major 一致）
+        // 以"最后一维最快"的顺序递增 iv（与常见 row-major 一致）
         for (int k = SRank - 1; k >= 0; --k) {
             iv[k]++;
-            if (iv[k] < m->sizes[k + 1]) break;
+            if (iv[k] < sizes[k + 1]) break;
             iv[k] = 0;
         }
     }
@@ -190,7 +189,7 @@ static int dump_impl(const StridedMemRefType<double, Rank>* m,
     }
 
     // =========================
-    // 写入“维度信息”（不使用 group）
+    // 写入"维度信息"（不使用 group）
     // =========================
 
     // 记录这次输出对应的 timeIndex 和映射后的 layer
@@ -210,7 +209,7 @@ static int dump_impl(const StridedMemRefType<double, Rank>* m,
     // 例如：x.lower / x.upper / x.points
     for (int i = 0; i < SRank; ++i) {
         const std::string& nm = safeDimNames[i];
-        const int64_t points = m->sizes[i + 1];
+        const int64_t points = sizes[i + 1];
         const double lo = lowers[i];
         const double up = uppers[i];
 
@@ -229,31 +228,52 @@ static int dump_impl(const StridedMemRefType<double, Rank>* m,
     return 0;
 }
 
+} // anonymous namespace
+
 // =========================
 // 对外导出的 C ABI 包装函数
 // =========================
-extern "C" int dump_result_hdf5_f64_rank2(const StridedMemRefType<double, 2>* memref,
-                                          int64_t timeIndex,
-                                          const char* const* dimNames,
-                                          const double* lowers,
-                                          const double* uppers) {
-    return dump_impl<2>(memref, timeIndex, dimNames, lowers, uppers);
+extern "C" int dump_result_hdf5_f64_rank2(
+    double* basePtr, double* data, int64_t offset,
+    int64_t size0, int64_t size1,
+    int64_t stride0, int64_t stride1,
+    int64_t timeIndex,
+    const char* const* dimNames,
+    const double* lowers,
+    const double* uppers)
+{
+    (void)basePtr; // unused
+    int64_t sizes[] = {size0, size1};
+    int64_t strides[] = {stride0, stride1};
+    return dump_impl<2>(data, offset, sizes, strides, timeIndex, dimNames, lowers, uppers);
 }
 
-extern "C" int dump_result_hdf5_f64_rank3(const StridedMemRefType<double, 3>* memref,
-                                          int64_t timeIndex,
-                                          const char* const* dimNames,
-                                          const double* lowers,
-                                          const double* uppers) {
-    return dump_impl<3>(memref, timeIndex, dimNames, lowers, uppers);
+extern "C" int dump_result_hdf5_f64_rank3(
+    double* basePtr, double* data, int64_t offset,
+    int64_t size0, int64_t size1, int64_t size2,
+    int64_t stride0, int64_t stride1, int64_t stride2,
+    int64_t timeIndex,
+    const char* const* dimNames,
+    const double* lowers,
+    const double* uppers)
+{
+    (void)basePtr; // unused
+    int64_t sizes[] = {size0, size1, size2};
+    int64_t strides[] = {stride0, stride1, stride2};
+    return dump_impl<3>(data, offset, sizes, strides, timeIndex, dimNames, lowers, uppers);
 }
 
-extern "C" int dump_result_hdf5_f64_rank4(const StridedMemRefType<double, 4>* memref,
-                                          int64_t timeIndex,
-                                          const char* const* dimNames,
-                                          const double* lowers,
-                                          const double* uppers) {
-    return dump_impl<4>(memref, timeIndex, dimNames, lowers, uppers);
-}
-
+extern "C" int dump_result_hdf5_f64_rank4(
+    double* basePtr, double* data, int64_t offset,
+    int64_t size0, int64_t size1, int64_t size2, int64_t size3,
+    int64_t stride0, int64_t stride1, int64_t stride2, int64_t stride3,
+    int64_t timeIndex,
+    const char* const* dimNames,
+    const double* lowers,
+    const double* uppers)
+{
+    (void)basePtr; // unused
+    int64_t sizes[] = {size0, size1, size2, size3};
+    int64_t strides[] = {stride0, stride1, stride2, stride3};
+    return dump_impl<4>(data, offset, sizes, strides, timeIndex, dimNames, lowers, uppers);
 }

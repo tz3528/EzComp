@@ -87,6 +87,15 @@ mlir::LogicalResult ManifestParser::load(const fs::path& path, ManifestParser& p
         }
     }
     
+    // 解析 libraries
+    if (auto* libsArray = root->getArray("libraries")) {
+        for (auto& libVal : *libsArray) {
+            if (auto libStr = libVal.getAsString()) {
+                parser.libraries_.push_back(libStr->str());
+            }
+        }
+    }
+    
     return mlir::success();
 }
 
@@ -183,11 +192,11 @@ DetectedLibraries LibraryDetector::detect(llvm::Module &module,
 //===----------------------------------------------------------------------===//
 
 std::string Linker::findClang() {
-    if (auto clang = llvm::sys::findProgramByName("clang"))
-        return *clang;
-    if (llvm::sys::fs::exists("/usr/bin/clang"))
-        return "/usr/bin/clang";
-    return "clang";
+    if (auto clangxx = llvm::sys::findProgramByName("clang++"))
+        return *clangxx;
+    if (llvm::sys::fs::exists("/usr/bin/clang++"))
+        return "/usr/bin/clang++";
+    return "clang++";
 }
 
 std::vector<std::string> Linker::buildCommandLine() const {
@@ -207,9 +216,19 @@ std::vector<std::string> Linker::buildCommandLine() const {
     for (const auto &a : config.archives) {
         args.push_back(a);
     }
-    
+
     for (const auto &lib : config.libraries) {
-        args.push_back("-l" + lib);
+        // 判断是完整路径还是库名
+        // 路径包含 '/' 或以 .so/.a/.lib 结尾，直接传递；否则加 -l 前缀
+        if (lib.find('/') != std::string::npos ||
+            lib.find('\\') != std::string::npos ||
+            lib.find(".so") != std::string::npos ||
+            lib.find(".a") != std::string::npos ||
+            lib.find(".lib") != std::string::npos) {
+            args.push_back(lib);
+        } else {
+            args.push_back("-l" + lib);
+        }
     }
     
     if (config.verbose) args.push_back("-v");
@@ -267,6 +286,11 @@ mlir::LogicalResult Linker::linkModule(llvm::Module &module,
     config.targetTriple = targetTriple;
     config.libraries = std::vector<std::string>(detected.libraries.begin(), 
                                                  detected.libraries.end());
+    
+    // 添加 manifest 中配置的库依赖
+    for (const auto& lib : parser.getLibraries()) {
+        config.libraries.push_back(lib);
+    }
     
     // 解析 archive key 为完整路径
     for (const auto& key : archives) {
