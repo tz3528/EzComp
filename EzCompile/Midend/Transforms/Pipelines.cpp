@@ -26,9 +26,9 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 		pm.addPass(createLowerCompDirichletPass());
 		pm.addPass(createLowerCompForTimePass());
 		pm.addPass(createLowerCompUpdatePass());
-		pm.addPass(createLowerCompDimPass());
 		pm.addPass(createLowerCompSolvePass());
 		pm.addPass(createLowerCompProblemPass());
+		pm.addPass(createLowerCompDimPass());
 
 		// 优化：规范化 + 常量折叠 + CSE
 		pm.addPass(mlir::createCanonicalizerPass());

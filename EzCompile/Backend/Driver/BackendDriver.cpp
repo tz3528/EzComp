@@ -33,6 +33,12 @@ void Backend::dumpLLVMIR(llvm::Module &module) {
     llvm::errs() << "\n=== End LLVM IR ===\n";
 }
 
+std::vector<std::string> Backend::getRequiredArchives() {
+    std::vector<std::string> archives;
+    archives.push_back("IO.HDF5");
+    return archives;
+}
+
 mlir::LogicalResult Backend::codeGen(llvm::Module &module,
                                       llvm::TargetMachine &targetMachine,
                                       const std::string &outputPath) {
@@ -63,7 +69,7 @@ mlir::LogicalResult Backend::fullCompile(llvm::Module &module) {
 
     // 创建 TargetMachine
     llvm::TargetOptions opt;
-    std::optional<llvm::Reloc::Model> rm;
+    std::optional<llvm::Reloc::Model> rm = llvm::Reloc::PIC_;
     std::string cpu = config.targetCPUVal.empty() ? "generic" : config.targetCPUVal;
 
     llvm::Triple triple(tripleStr);
@@ -85,7 +91,8 @@ mlir::LogicalResult Backend::fullCompile(llvm::Module &module) {
     }
 
     // 链接
-    if (mlir::failed(link::Linker::linkModule(module, objFile, exeFile, tripleStr))) {
+    if (mlir::failed(link::Linker::linkModule(module, objFile, exeFile,
+											  tripleStr, getRequiredArchives()))) {
         return mlir::failure();
     }
 
