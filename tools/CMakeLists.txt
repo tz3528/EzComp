@@ -40,6 +40,7 @@ target_link_libraries(ezcomp PRIVATE
         MLIRMemRefDialect
         MLIRSCFDialect
         MLIRUBDialect
+        MLIRVectorDialect
 
         # --- 转换库 ---
         MLIRAffineToStandard
@@ -51,6 +52,7 @@ target_link_libraries(ezcomp PRIVATE
         MLIRMemRefToLLVM
         MLIRSCFToControlFlow
         MLIRUBToLLVM
+        MLIRVectorToLLVM
 )
 
 # 4. 设置 RPATH (确保运行时能找到动态库)

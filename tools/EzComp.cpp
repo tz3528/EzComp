@@ -27,6 +27,7 @@
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
@@ -60,6 +61,7 @@ static void registerNeededExtensions(mlir::DialectRegistry &registry) {
     mlir::registerConvertMathToLLVMInterface(registry);
     mlir::registerConvertMemRefToLLVMInterface(registry);
     mlir::ub::registerConvertUBToLLVMInterface(registry);
+    mlir::vector::registerConvertVectorToLLVMInterface(registry);
     // Func 内联扩展
     mlir::func::registerInlinerExtension(registry);
 }
