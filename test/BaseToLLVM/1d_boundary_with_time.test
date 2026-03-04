@@ -1,0 +1,62 @@
+#===-- 1d_boundary_with_time.test ----------------------------*-- Comp -*-===#
+#
+# 1D: 边界方程右侧有时间信息 - BaseToLLVM 测试
+# u(0,t) = sin(t) → 验证 math.sin 降级为 LLVM intrinsic
+#
+#===------------------------------------------------------------------------===#
+
+# RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true base-llvm=true})" | FileCheck %s
+
+# ===== 验证 LLVM 函数入口 =====
+# CHECK-LABEL: llvm.func @main()
+
+# ===== 验证常量（函数开头）=====
+# CHECK: llvm.mlir.constant
+
+# ===== 验证内存分配（malloc）=====
+# CHECK: llvm.call @malloc
+
+# ===== 验证 math.sin 降级为 LLVM intrinsic =====
+# CHECK: llvm.intr.sin
+
+# ===== 验证控制流操作 =====
+# CHECK: llvm.br
+# CHECK: llvm.cond_br
+
+# ===== 验证比较操作 =====
+# CHECK: llvm.icmp "slt"
+
+# ===== 验证内存操作 =====
+# CHECK: llvm.load
+# CHECK: llvm.store
+
+# ===== 验证类型转换 =====
+# CHECK: llvm.sitofp
+
+# ===== 验证浮点运算 =====
+# CHECK: llvm.fdiv
+# CHECK: llvm.fmul
+# CHECK: llvm.fadd
+
+# ===== 验证返回 =====
+# CHECK: llvm.return
+
+declarations {
+    x[0,100,101];
+    t[0,50,51];
+}
+
+equations {
+    u(x,0) = 0;
+    u(0,t) = sin(t);
+    u(100,t) = 0;
+    u(x,t+1) = u(x,t);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,t)";
+    timeVar:"t";
+}

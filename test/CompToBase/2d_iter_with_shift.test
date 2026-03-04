@@ -1,0 +1,64 @@
+#===-- 2d_iter_with_shift.test --------------------------------*-- Comp -*-===#
+#
+# 2D: 迭代方程右侧有位置偏移 - CompToBase 测试
+# u(x,y,t+1) = u(x-1,y,t) + u(x+1,y,t) + u(x,y-1,t) + u(x,y+1,t)
+# 验证多个 memref.load 带空间偏移
+#
+#===------------------------------------------------------------------------===#
+
+# RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true})" | FileCheck %s
+
+# ===== 验证 comp 方言操作已消除 =====
+# CHECK-NOT: comp.
+
+# ===== 验证 memref 分配：第一维=2，后续=x.points=11, y.points=11 =====
+# CHECK: memref.alloc() : memref<2x11x11xf64>
+
+# ===== 初始化循环 =====
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
+
+# ===== 时间迭代循环：t (0 to 10) =====
+# CHECK: affine.for {{.*}} = 0 to 10
+
+# ===== 空间更新循环：有偏移，跳过边界 =====
+# CHECK: affine.for {{.*}} = 1 to 10
+# CHECK: affine.for {{.*}} = 1 to 10
+
+# ===== 验证多个 memref.load（4个空间偏移） =====
+# CHECK-DAG: memref.load {{.*}} : memref<2x11x11xf64>
+# CHECK-DAG: memref.load {{.*}} : memref<2x11x11xf64>
+# CHECK-DAG: memref.load {{.*}} : memref<2x11x11xf64>
+# CHECK-DAG: memref.load {{.*}} : memref<2x11x11xf64>
+
+# ===== 验证加法运算 =====
+# CHECK: arith.addf
+# CHECK: arith.addf
+# CHECK: arith.addf
+
+# ===== 存储 =====
+# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
+
+declarations {
+    x[0,10,11];
+    y[0,10,11];
+    t[0,10,11];
+}
+
+equations {
+    u(x,y,0) = 0;
+    u(0,y,t) = 0;
+    u(10,y,t) = 0;
+    u(x,0,t) = 0;
+    u(x,10,t) = 0;
+    u(x,y,t+1) = u(x-1,y,t) + u(x+1,y,t) + u(x,y-1,t) + u(x,y+1,t);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,y,t)";
+    timeVar:"t";
+}

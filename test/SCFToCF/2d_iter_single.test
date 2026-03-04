@@ -1,0 +1,59 @@
+#===-- 2d_iter_single.test ------------------------------------*-- Comp -*-===#
+#
+# 2D: 单个迭代方程 - SCFToCF 测试
+# 验证所有 scf.for 被正确降级为 cf.br / cf.cond_br 控制流
+#
+#===------------------------------------------------------------------------===#
+
+# RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true affine-scf=true scf-cf=true})" | FileCheck %s
+
+# ===== 确保没有 scf.for 和 affine.for =====
+# CHECK-NOT: scf.for
+# CHECK-NOT: affine.for
+
+# CHECK-LABEL: func.func @main()
+
+# ===== 验证常量定义（按实际输出顺序）=====
+# CHECK: arith.constant 1 : index
+# CHECK: arith.constant 11 : index
+# CHECK: arith.constant 10 : index
+# CHECK: arith.constant 0 : index
+
+# ===== 验证 memref 分配 =====
+# CHECK: memref.alloc() : memref<2x11x11xf64>
+
+# ===== 验证控制流操作存在 =====
+# CHECK: cf.br {{.*}}(%c0 : index)
+# CHECK: cf.cond_br
+
+# ===== 验证循环比较操作 =====
+# CHECK: arith.cmpi slt
+
+# ===== 验证内存操作 =====
+# CHECK: memref.load {{.*}} : memref<2x11x11xf64>
+# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
+
+# CHECK: return
+
+declarations {
+    x[0,10,11];
+    y[0,10,11];
+    t[0,10,11];
+}
+
+equations {
+    u(x,y,0) = 0;
+    u(0,y,t) = 0;
+    u(10,y,t) = 0;
+    u(x,0,t) = 0;
+    u(x,10,t) = 0;
+    u(x,y,t+1) = u(x,y,t);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,y,t)";
+    timeVar:"t";
+}

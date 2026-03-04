@@ -1,0 +1,68 @@
+#===-- 2d_init_no_pos.test ------------------------------------*-- Comp -*-===#
+#
+# 2D: 初始化方程右侧无位置信息 - CompToBase 测试
+# u(x,y,0) = 0 → 验证 2D memref 和嵌套循环
+#
+#===------------------------------------------------------------------------===#
+
+# RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true})" | FileCheck %s
+
+# ===== 验证 comp 方言操作已消除 =====
+# CHECK-NOT: comp.
+
+# ===== 验证 memref 分配：第一维=2，后续=x.points=11, y.points=11 =====
+# CHECK: memref.alloc() : memref<2x11x11xf64>
+
+# ===== 初始化循环：嵌套遍历 x 和 y =====
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
+
+# ===== 边界条件循环（4个）=====
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
+
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
+
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
+
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
+
+# ===== 时间迭代循环：t (0 to 10) =====
+# CHECK: affine.for {{.*}} = 0 to 10
+
+# ===== 空间更新循环：无偏移，完整遍历 =====
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: memref.load {{.*}} : memref<2x11x11xf64>
+# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
+
+declarations {
+    x[0,10,11];
+    y[0,10,11];
+    t[0,10,11];
+}
+
+equations {
+    u(x,y,0) = 0;
+    u(0,y,t) = 0;
+    u(10,y,t) = 0;
+    u(x,0,t) = 0;
+    u(x,10,t) = 0;
+    u(x,y,t+1) = u(x,y,t);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,y,t)";
+    timeVar:"t";
+}

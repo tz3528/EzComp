@@ -1,0 +1,63 @@
+#===-- 1d_iter_multi.test -------------------------------------*-- Comp -*-===#
+#
+# 1D: 多个迭代方程 - BaseToLLVM 测试
+# diff(u,t) = ... 和 u(x,t+1) = u(x,t) + diff(u,t)
+# 验证多个 sample 和复杂算术运算
+#
+#===------------------------------------------------------------------------===#
+
+# RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true base-llvm=true})" | FileCheck %s
+
+# ===== 验证 LLVM 函数入口 =====
+# CHECK-LABEL: llvm.func @main()
+
+# ===== 验证常量（函数开头）=====
+# CHECK: llvm.mlir.constant
+
+# ===== 验证内存分配（malloc）=====
+# CHECK: llvm.call @malloc
+
+# ===== 验证控制流操作 =====
+# CHECK: llvm.br
+# CHECK: llvm.cond_br
+
+# ===== 验证比较操作 =====
+# CHECK: llvm.icmp "slt"
+
+# ===== 验证多个内存加载 =====
+# CHECK-DAG: llvm.load
+# CHECK-DAG: llvm.load
+# CHECK-DAG: llvm.load
+
+# ===== 验证浮点算术 =====
+# CHECK: llvm.fadd
+# CHECK: llvm.fmul
+# CHECK: llvm.fsub
+# CHECK: llvm.fdiv
+
+# ===== 验证内存存储 =====
+# CHECK: llvm.store
+
+# ===== 验证返回 =====
+# CHECK: llvm.return
+
+declarations {
+    x[0,50,51];
+    t[0,100,101];
+}
+
+equations {
+    u(x,0) = 0;
+    u(0,t) = 100;
+    u(50,t) = 0;
+    diff(u(x,t),x,2) = (u(x-1,t)+u(x+1,t)-2*u(x,t))/delta(x,2);
+    u(x,t+1) = u(x,t) + diff(u(x,t),x,2);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,t)";
+    timeVar:"t";
+}

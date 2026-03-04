@@ -1,0 +1,76 @@
+#===-- 1d_iter_single.test ------------------------------------*-- Comp -*-===#
+#
+# 1D: 单个迭代方程 - SCFToCF 测试
+# 验证所有 scf.for 被正确降级为 cf.br / cf.cond_br 控制流
+#
+#===------------------------------------------------------------------------===#
+
+# RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true affine-scf=true scf-cf=true})" | FileCheck %s
+
+# ===== 确保没有 scf.for 和 affine.for =====
+# CHECK-NOT: scf.for
+# CHECK-NOT: affine.for
+
+# CHECK-LABEL: func.func @main()
+
+# ===== 验证 memref 分配 =====
+# CHECK: memref.alloc() : memref<2x101xf64>
+
+# ===== 初始化循环：cf.br 跳转到循环头 =====
+# CHECK: cf.br {{.*}}(%c0 : index)
+
+# ===== 循环头：条件判断 =====
+# CHECK: arith.cmpi slt, {{.*}}, %c101 : index
+# CHECK: cf.cond_br {{.*}}, ^bb{{.*}}, ^bb{{.*}}(%c0 : index)
+
+# ===== 循环体：memref.store 和增量 =====
+# CHECK: memref.store {{.*}} : memref<2x101xf64>
+# CHECK: arith.addi {{.*}}, %c1 : index
+# CHECK: cf.br {{.*}}({{.*}} : index)
+
+# ===== 边界条件循环1：u(0,t) =====
+# CHECK: arith.cmpi slt, {{.*}}, %c51 : index
+# CHECK: cf.cond_br
+
+# ===== 边界条件循环2：u(100,t) =====
+# CHECK: arith.cmpi slt, {{.*}}, %c51 : index
+# CHECK: cf.cond_br
+
+# ===== 主迭代循环：t (0 to 50) =====
+# CHECK: arith.cmpi slt, {{.*}}, %c50 : index
+# CHECK: cf.cond_br
+
+# ===== 内层迭代循环：x (0 to 101) =====
+# CHECK: arith.cmpi slt, {{.*}}, %c101 : index
+# CHECK: cf.cond_br
+# CHECK: memref.load {{.*}} : memref<2x101xf64>
+# CHECK: memref.store {{.*}} : memref<2x101xf64>
+
+# ===== 主循环内的边界条件循环 =====
+# CHECK: arith.cmpi slt, {{.*}}, %c51 : index
+# CHECK: cf.cond_br
+
+# CHECK: arith.cmpi slt, {{.*}}, %c51 : index
+# CHECK: cf.cond_br
+
+# CHECK: return
+
+declarations {
+    x[0,100,101];
+    t[0,50,51];
+}
+
+equations {
+    u(x,0) = 0;
+    u(0,t) = 0;
+    u(100,t) = 0;
+    u(x,t+1) = u(x,t);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,t)";
+    timeVar:"t";
+}
