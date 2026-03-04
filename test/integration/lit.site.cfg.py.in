@@ -15,8 +15,8 @@ config.test_format = lit.formats.ShTest(execute_external=False)
 config.suffixes = ['.comp', '.test']
 
 # Source and execution roots
-config.test_source_root = "@CMAKE_CURRENT_SOURCE_DIR@"
-config.test_exec_root = "@CMAKE_CURRENT_BINARY_DIR@"
+config.test_source_root = "@CMAKE_CURRENT_SOURCE_DIR@/integration"
+config.test_exec_root = "@CMAKE_CURRENT_BINARY_DIR@/integration"
 
 # Substitutions
 config.substitutions.append(('%ezcomp', config.ezcomp_executable))

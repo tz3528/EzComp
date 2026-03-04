@@ -40,15 +40,15 @@ set(EZCOMP_EXECUTABLE "${EZCOMP_EXE}/ezcomp${CMAKE_EXECUTABLE_SUFFIX}")
 # 配置 lit.site.cfg.py
 set(FILECHECK_EXECUTABLE "${FILECHECK_EXE}")
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
-    ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration/lit.site.cfg.py.in
+    ${CMAKE_CURRENT_BINARY_DIR}/integration/lit.site.cfg.py
     @ONLY
 )
 
 # 配置 lit 测试参数
 set(LIT_ARGS
     -v
-    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/integration
 )
 
 # 添加测试目标
