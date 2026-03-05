@@ -169,11 +169,9 @@ std::string LibraryDetector::getMathLibraryName(const llvm::Triple &triple) {
     }
 }
 
-DetectedLibraries LibraryDetector::detect(llvm::Module &module,
-                                           const std::string &targetTripleStr) {
+DetectedLibraries LibraryDetector::detect(llvm::Module &module) {
     DetectedLibraries result;
-    std::string tripleStr = targetTripleStr.empty() 
-        ? module.getTargetTriple().str() : targetTripleStr;
+    std::string tripleStr = module.getTargetTriple().str();
     llvm::Triple triple(tripleStr);
     
     bool needMath = false;
@@ -201,11 +199,6 @@ std::vector<std::string> Linker::buildCommandLine() const {
     std::vector<std::string> args;
     args.push_back(EZCOMP_CXX_COMPILER);
     
-    if (!config.targetTriple.empty()) {
-        args.push_back("-target");
-        args.push_back(config.targetTriple);
-    }
-
     args.push_back(config.objectFile);
     
     args.push_back("-o");
@@ -264,7 +257,6 @@ mlir::LogicalResult Linker::run() {
 mlir::LogicalResult Linker::linkModule(llvm::Module &module,
                                         const std::string &objectFile,
                                         const std::string &outputFile,
-                                        const std::string &targetTriple,
                                         const std::vector<std::string> archives) {
     // 加载 manifest JSON
     ManifestParser parser;
@@ -272,7 +264,7 @@ mlir::LogicalResult Linker::linkModule(llvm::Module &module,
         return mlir::failure();
     }
     
-    auto detected = LibraryDetector::detect(module, targetTriple);
+    auto detected = LibraryDetector::detect(module);
     
     if (!detected.libraries.empty()) {
         llvm::errs() << "Required libraries:";
@@ -284,7 +276,6 @@ mlir::LogicalResult Linker::linkModule(llvm::Module &module,
     LinkerConfig config;
     config.objectFile = objectFile;
     config.outputFile = outputFile;
-    config.targetTriple = targetTriple;
     config.libraries = std::vector<std::string>(detected.libraries.begin(), 
                                                  detected.libraries.end());
     
