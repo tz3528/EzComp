@@ -98,7 +98,6 @@ public:
 private:
     LinkerConfig config;
     
-    static std::string findClang();
     std::vector<std::string> buildCommandLine() const;
 };
 

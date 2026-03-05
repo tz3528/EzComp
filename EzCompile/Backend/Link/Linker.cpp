@@ -197,27 +197,9 @@ DetectedLibraries LibraryDetector::detect(llvm::Module &module,
 // Linker
 //===----------------------------------------------------------------------===//
 
-std::string Linker::findClang() {
-    // 优先使用 CMake 配置的路径
-#ifdef CLANGPLUSPLUS_PATH
-    if (llvm::sys::fs::exists(CLANGPLUSPLUS_PATH))
-        return CLANGPLUSPLUS_PATH;
-#endif
-    
-    // Fallback: 搜索 PATH
-    if (auto clangxx = llvm::sys::findProgramByName("clang++"))
-        return *clangxx;
-    
-    // Unix 默认路径
-    if (llvm::sys::fs::exists("/usr/bin/clang++"))
-        return "/usr/bin/clang++";
-    
-    return "clang++";
-}
-
 std::vector<std::string> Linker::buildCommandLine() const {
     std::vector<std::string> args;
-    args.push_back(findClang());
+    args.push_back(EZCOMP_CXX_COMPILER);
     
     if (!config.targetTriple.empty()) {
         args.push_back("-target");
@@ -234,6 +216,9 @@ std::vector<std::string> Linker::buildCommandLine() const {
     }
 
     for (const auto &lib : config.libraries) {
+        // 跳过空字符串
+        if (lib.empty()) continue;
+
         // 判断是完整路径还是库名
         // 路径包含 '/' 或以 .so/.a/.lib 结尾，直接传递；否则加 -l 前缀
         if (lib.find('/') != std::string::npos ||

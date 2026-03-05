@@ -34,20 +34,9 @@ target_compile_definitions(Backend PRIVATE
         EZ_RUNTIME_MANIFEST_ABS_PATH="${CMAKE_BINARY_DIR}/EzComputeRuntime.manifest.json"
 )
 
-# 6. 设置 Clang++ 路径（优先使用 LLVM 构建目录中的 clang）
-# LLVM_TOOLS_BINARY_DIR 是 LLVM 工具（如 clang++）的输出目录
-if(DEFINED LLVM_TOOLS_BINARY_DIR)
-    set(CLANGPLUSPLUS_PATH "${LLVM_TOOLS_BINARY_DIR}/clang++${CMAKE_EXECUTABLE_SUFFIX}")
-elseif(DEFINED LLVM_BINARY_DIR)
-    set(CLANGPLUSPLUS_PATH "${LLVM_BINARY_DIR}/bin/clang++${CMAKE_EXECUTABLE_SUFFIX}")
-else()
-    # Fallback: 相对于 MLIR_DIR 推算
-    get_filename_component(LLVM_BUILD_DIR "${MLIR_DIR}/../../.." ABSOLUTE)
-    set(CLANGPLUSPLUS_PATH "${LLVM_BUILD_DIR}/bin/clang++${CMAKE_EXECUTABLE_SUFFIX}")
-endif()
-
+# 6. 设置 C++ 编译器路径（使用编译项目的编译器）
 target_compile_definitions(Backend PRIVATE
-        CLANGPLUSPLUS_PATH="${CLANGPLUSPLUS_PATH}"
+        EZCOMP_CXX_COMPILER="${CMAKE_CXX_COMPILER}"
 )
 
 # 6. 添加子模块
