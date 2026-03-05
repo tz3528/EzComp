@@ -47,7 +47,7 @@ static const char* mathFunctions[] = {
 mlir::LogicalResult ManifestParser::load(const fs::path& path, ManifestParser& parser) {
     // 检查文件是否存在
     if (!fs::exists(path)) {
-        llvm::errs() << "Manifest file not found: " << path << "\n";
+        llvm::errs() << "Manifest file not found: " << path.string() << "\n";
         return mlir::failure();
     }
     
@@ -135,9 +135,15 @@ mlir::LogicalResult ManifestParser::getArchivePath(const std::string& key, std::
         return mlir::failure();
     }
     
-    // 拼接 baseDir + value
-    fs::path fullPath = baseDir / it->second;
-    archive = fullPath.string();
+    fs::path path(it->second);
+    if (path.is_absolute()) {
+        // 已经是绝对路径，直接使用
+        archive = it->second;
+    } else {
+        // 相对路径：拼接 baseDir + value
+        fs::path fullPath = baseDir / it->second;
+        archive = fullPath.string();
+    }
     return mlir::success();
 }
 
@@ -192,10 +198,20 @@ DetectedLibraries LibraryDetector::detect(llvm::Module &module,
 //===----------------------------------------------------------------------===//
 
 std::string Linker::findClang() {
+    // 优先使用 CMake 配置的路径
+#ifdef CLANGPLUSPLUS_PATH
+    if (llvm::sys::fs::exists(CLANGPLUSPLUS_PATH))
+        return CLANGPLUSPLUS_PATH;
+#endif
+    
+    // Fallback: 搜索 PATH
     if (auto clangxx = llvm::sys::findProgramByName("clang++"))
         return *clangxx;
+    
+    // Unix 默认路径
     if (llvm::sys::fs::exists("/usr/bin/clang++"))
         return "/usr/bin/clang++";
+    
     return "clang++";
 }
 
