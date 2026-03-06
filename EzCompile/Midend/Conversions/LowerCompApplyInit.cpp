@@ -95,7 +95,7 @@ struct LowerApplyInitPattern : mlir::OpConversionPattern<comp::ApplyInitOp> {
 			comp::DimOp dimOp = lookupDimOp(op, d);
 			auto points = static_cast<int64_t>(dimOp.getPoints());
 
-			auto forOp = mlir::affine::AffineForOp::create(rewriter, loc, /*lb=*/0, /*ub=*/points, /*step=*/1);
+			auto forOp = mlir::affine::AffineForOp::create(rewriter, loc, 0, points - 1, 1);
 			mlir::Value iv = forOp.getInductionVar();
 			dimIndexVal[d] = iv;
 

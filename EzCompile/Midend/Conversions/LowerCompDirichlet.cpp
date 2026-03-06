@@ -154,7 +154,7 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
             comp::DimOp dimOp = lookupDimOp(op, d);
             auto points = static_cast<int64_t>(dimOp.getPoints());
 
-            auto forOp = rewriter.create<mlir::affine::AffineForOp>(loc, 0, points, 1);
+            auto forOp = rewriter.create<mlir::affine::AffineForOp>(loc, 0, points - 1, 1);
             rewriter.setInsertionPointToStart(forOp.getBody());
             if (d == time_var) {
             	indicesMap[d] = modIndex(rewriter, loc, forOp.getInductionVar(), 2);
