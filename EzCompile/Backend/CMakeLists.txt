@@ -34,6 +34,11 @@ target_compile_definitions(Backend PRIVATE
         EZ_RUNTIME_MANIFEST_ABS_PATH="${CMAKE_BINARY_DIR}/EzComputeRuntime.manifest.json"
 )
 
+# 6. 设置 C++ 编译器路径（使用编译项目的编译器）
+target_compile_definitions(Backend PRIVATE
+        EZCOMP_CXX_COMPILER="${CMAKE_CXX_COMPILER}"
+)
+
 # 6. 添加子模块
 add_subdirectory(Driver)
 add_subdirectory(Link)

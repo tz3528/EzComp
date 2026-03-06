@@ -54,11 +54,6 @@ inline cl::opt<OptLevel> optLevel(
         clEnumValN(OptLevel::O2, "2", "Standard optimization"),
         clEnumValN(OptLevel::O3, "3", "Aggressive optimization (default)")));
 
-inline cl::opt<std::string> targetTriple(
-    "target",
-    cl::desc("Target triple (e.g. x86_64-linux-gnu)"),
-    cl::value_desc("triple"));
-
 inline cl::opt<std::string> targetCPU(
     "mcpu",
     cl::desc("Target CPU"),
@@ -85,7 +80,6 @@ inline cl::opt<std::string> outputFile(
 struct BackendConfig {
     CompileMode mode = CompileMode::DumpLLVMIR;
     OptLevel optLevelVal = OptLevel::O3;
-    std::string targetTripleVal;
     std::string targetCPUVal;
     std::string targetFeaturesVal;
     std::string outputFileVal;
@@ -106,7 +100,6 @@ inline BackendConfig BackendConfig::fromCommandLine(llvm::StringRef inputFile) {
     BackendConfig config;
     config.mode = CompileMode::FullCompile;
     config.optLevelVal = optLevel.getValue();
-    config.targetTripleVal = targetTriple.getValue();
     config.targetCPUVal = targetCPU.getValue();
     config.targetFeaturesVal = targetFeatures.getValue();
     

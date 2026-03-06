@@ -1,4 +1,4 @@
-//===-- HDF5.cpp -----------------------------------------------*- C++ -*-===//
+//===-- HDF5Wrapper.cpp -----------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-#include "HDF5.h"
+#include "HDF5Wrapper.h"
 
 namespace {
 

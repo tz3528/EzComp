@@ -1,4 +1,4 @@
-//===-- HDF5.h -------------------------------------------------*- C++ -*-===//
+//===-- HDF5Wrapper.h -------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 
-#ifndef EZ_COMPUTE_IO_HDF5_H
-#define EZ_COMPUTE_IO_HDF5_H
+#ifndef EZ_COMPUTE_IO_HDF5_WRAPPER_H
+#define EZ_COMPUTE_IO_HDF5_WRAPPER_H
 
 #include <cstdint>
 
@@ -62,4 +62,4 @@ int dump_result_hdf5_f64_rank4(
 }
 #endif
 
-#endif // EZ_COMPUTE_IO_HDF5_H
+#endif // EZ_COMPUTE_IO_HDF5_WRAPPER_H

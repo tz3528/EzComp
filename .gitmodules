@@ -1,3 +1,6 @@
 [submodule "llvm"]
 	path = llvm
 	url = https://github.com/llvm/llvm-project.git
+[submodule "EzCompute/IO/hdf5"]
+	path = EzCompute/IO/hdf5
+	url = https://github.com/HDFGroup/hdf5.git
