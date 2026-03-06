@@ -61,7 +61,7 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 			comp::DimOp dimOp = lookupDimOp(op, range.getDim());
 
 			auto lb = -range.getLower().getInt();
-			auto ub = dimOp.getPoints() - range.getUpper().getInt() - 1;
+			auto ub = dimOp.getPoints() - range.getUpper().getInt();
 			auto forOp = mlir::affine::AffineForOp::create(rewriter, loc, lb, ub, 1);
 			mlir::Value iv = forOp.getInductionVar();
 			argValues.emplace_back(iv);

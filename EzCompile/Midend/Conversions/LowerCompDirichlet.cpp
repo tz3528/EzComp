@@ -143,29 +143,28 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
             return mlir::success();
         };
 
-        // 递归构建循环嵌套
-        std::function<mlir::LogicalResult(int, mlir::DenseMap<mlir::Attribute, mlir::Value>&)> buildLoopNest =
-            [&](int dimIdx, mlir::DenseMap<mlir::Attribute, mlir::Value>& indicesMap) -> mlir::LogicalResult {
-            if (dimIdx >= unfixedDims.size()) {
-                return emitCalculationLogic(indicesMap);
-            }
-
-            mlir::FlatSymbolRefAttr d = unfixedDims[dimIdx];
-            comp::DimOp dimOp = lookupDimOp(op, d);
-            auto points = static_cast<int64_t>(dimOp.getPoints());
-
-            auto forOp = rewriter.create<mlir::affine::AffineForOp>(loc, 0, points - 1, 1);
-            rewriter.setInsertionPointToStart(forOp.getBody());
-            if (d == time_var) {
-            	indicesMap[d] = modIndex(rewriter, loc, forOp.getInductionVar(), 2);
-            }
-            else {
-				indicesMap[d] = forOp.getInductionVar();
-            }
-
-            return buildLoopNest(dimIdx + 1, indicesMap);
-        };
-
+        		// 递归构建循环嵌套
+                std::function<mlir::LogicalResult(int, mlir::DenseMap<mlir::Attribute, mlir::Value>&)> buildLoopNest =
+                    [&](int dimIdx, mlir::DenseMap<mlir::Attribute, mlir::Value>& indicesMap) -> mlir::LogicalResult {
+                    if (dimIdx >= unfixedDims.size()) {
+                        return emitCalculationLogic(indicesMap);
+                    }
+        
+                    mlir::FlatSymbolRefAttr d = unfixedDims[dimIdx];
+                    comp::DimOp dimOp = lookupDimOp(op, d);
+                    auto points = static_cast<int64_t>(dimOp.getPoints());
+        
+                    auto forOp = rewriter.create<mlir::affine::AffineForOp>(loc, 0, points, 1);
+                    rewriter.setInsertionPointToStart(forOp.getBody());
+                    if (d == time_var) {
+                    	indicesMap[d] = modIndex(rewriter, loc, forOp.getInductionVar(), 2);
+                    }
+                    else {
+        				indicesMap[d] = forOp.getInductionVar();
+                    }
+        
+                    return buildLoopNest(dimIdx + 1, indicesMap);
+                };
 		// 第一处：ForTime 之前（初始化边界）
         {
             rewriter.setInsertionPoint(for_time);
