@@ -1,0 +1,233 @@
+#===-- compare.py ---------------------------------------------*- Python -*-===#
+#
+# Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+#===------------------------------------------------------------------------===#
+
+"""
+比较测试结果脚本
+1. 运行 ezcomp 编译 .comp 文件
+2. 比较运行生成的 result.h5 与预期结果
+"""
+
+import argparse
+import sys
+import os
+import subprocess
+import glob
+import h5py
+import numpy as np
+
+# 由 CMake 配置注入
+EZCOMP_EXECUTABLE = "@EZCOMP_EXECUTABLE@"
+COMPARE_TEST_SOURCE_DIR = "@COMPARE_TEST_SOURCE_DIR@"
+
+
+def find_comp_file(test_dir):
+    """
+    在测试目录下查找 .comp 文件
+
+    Args:
+        test_dir: 测试目录路径
+
+    Returns:
+        .comp 文件的完整路径，如果没找到返回 None
+    """
+    comp_files = glob.glob(os.path.join(test_dir, '*.comp'))
+    if not comp_files:
+        return None
+    if len(comp_files) > 1:
+        print(f"警告: 找到多个 .comp 文件，使用第一个: {comp_files[0]}")
+    return comp_files[0]
+
+
+def run_ezcomp(ezcomp_path, comp_file, working_dir):
+    """
+    运行 ezcomp 编译 .comp 文件
+
+    Args:
+        ezcomp_path: ezcomp 可执行文件路径
+        comp_file: .comp 源文件路径
+        working_dir: 工作目录
+
+    Returns:
+        (success, return_code): 是否成功，返回码
+    """
+    cmd = [ezcomp_path, comp_file, '-emit=compile']
+    print(f"运行命令: {' '.join(cmd)}")
+    print(f"工作目录: {working_dir}")
+    print("-" * 50)
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=working_dir,
+            capture_output=True,
+            text=True
+        )
+
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+
+        if result.returncode != 0:
+            print(f"ezcomp 返回错误码: {result.returncode}")
+            return False, result.returncode
+
+        return True, result.returncode
+
+    except FileNotFoundError:
+        print(f"错误: 找不到 ezcomp 可执行文件: {ezcomp_path}")
+        return False, -1
+    except Exception as e:
+        print(f"运行 ezcomp 时出错: {str(e)}")
+        return False, -1
+
+
+def compare_datasets(actual_file, expected_file, rtol=1e-5, atol=1e-8):
+    """
+    比较两个 HDF5 文件的内容
+
+    Args:
+        actual_file: 实际输出文件路径
+        expected_file: 预期输出文件路径
+        rtol: 相对容差
+        atol: 绝对容差
+
+    Returns:
+        (success, messages): 是否成功，以及比较信息列表
+    """
+    messages = []
+
+    if not os.path.exists(actual_file):
+        return False, [f"实际输出文件不存在: {actual_file}"]
+
+    if not os.path.exists(expected_file):
+        return False, [f"预期输出文件不存在: {expected_file}"]
+
+    try:
+        with h5py.File(actual_file, 'r') as f_actual, \
+             h5py.File(expected_file, 'r') as f_expected:
+
+            # 检查数据集
+            actual_keys = set(f_actual.keys())
+            expected_keys = set(f_expected.keys())
+
+            if actual_keys != expected_keys:
+                missing_in_actual = expected_keys - actual_keys
+                missing_in_expected = actual_keys - expected_keys
+                if missing_in_actual:
+                    messages.append(f"实际输出缺少数据集: {missing_in_actual}")
+                if missing_in_expected:
+                    messages.append(f"预期输出缺少数据集: {missing_in_expected}")
+                return False, messages
+
+            # 比较 result 数据集
+            if 'result' in actual_keys:
+                actual_data = f_actual['result'][:]
+                expected_data = f_expected['result'][:]
+
+                if actual_data.shape != expected_data.shape:
+                    messages.append(f"result 形状不匹配: {actual_data.shape} vs {expected_data.shape}")
+                    return False, messages
+
+                if not np.allclose(actual_data, expected_data, rtol=rtol, atol=atol):
+                    diff = np.abs(actual_data - expected_data)
+                    max_diff = np.max(diff)
+                    max_rel_diff = np.max(diff / (np.abs(expected_data) + 1e-10))
+                    messages.append(f"result 数据不匹配:")
+                    messages.append(f"  最大绝对误差: {max_diff:.6e}")
+                    messages.append(f"  最大相对误差: {max_rel_diff:.6e}")
+                    return False, messages
+
+                messages.append(f"result 数据集比较通过 (shape={actual_data.shape})")
+
+            # 比较坐标数据集
+            for key in actual_keys:
+                if key.startswith('coord_'):
+                    actual_coords = f_actual[key][:]
+                    expected_coords = f_expected[key][:]
+
+                    if not np.allclose(actual_coords, expected_coords, rtol=rtol, atol=atol):
+                        messages.append(f"{key} 坐标不匹配")
+                        return False, messages
+                    messages.append(f"{key} 坐标比较通过")
+
+            return True, messages
+
+    except Exception as e:
+        return False, [f"比较过程出错: {str(e)}"]
+
+
+def main():
+    parser = argparse.ArgumentParser(description='比较测试结果')
+    parser.add_argument('test_dir', nargs='?', default=os.environ.get('COMPARE_TEST_DIR', ''),
+                        help='测试目录名 (也可通过环境变量 COMPARE_TEST_DIR 设置)')
+    parser.add_argument('--actual', default='result.h5', help='实际输出文件路径')
+    parser.add_argument('--expected', default=None, help='预期输出文件路径')
+    parser.add_argument('--rtol', type=float, default=1e-5, help='相对容差')
+    parser.add_argument('--atol', type=float, default=1e-8, help='绝对容差')
+
+    args = parser.parse_args()
+
+    if not args.test_dir:
+        parser.error("需要指定测试目录名，用法: compare.py <test_dir> 或设置环境变量 COMPARE_TEST_DIR")
+
+    # 确定测试目录路径 (使用源码目录)
+    test_dir_path = os.path.join(COMPARE_TEST_SOURCE_DIR, args.test_dir)
+
+    if not os.path.isdir(test_dir_path):
+        print(f"错误: 测试目录不存在: {test_dir_path}")
+        return 1
+
+    # 查找 .comp 文件
+    comp_file = find_comp_file(test_dir_path)
+    if not comp_file:
+        print(f"错误: 在目录 {test_dir_path} 中未找到 .comp 文件")
+        return 1
+
+    print(f"测试目录: {args.test_dir}")
+    print(f"Comp 文件: {comp_file}")
+    print(f"ezcomp: {EZCOMP_EXECUTABLE}")
+    print("=" * 50)
+
+    # 运行 ezcomp 编译
+    success, return_code = run_ezcomp(EZCOMP_EXECUTABLE, comp_file, os.getcwd())
+    if not success:
+        print("=" * 50)
+        print("编译失败")
+        return 1
+
+    print("=" * 50)
+
+    # 确定预期输出文件路径
+    if args.expected is None:
+        args.expected = os.path.join(test_dir_path, 'expected_result.h5')
+
+    print(f"实际输出: {args.actual}")
+    print(f"预期输出: {args.expected}")
+    print("-" * 50)
+
+    success, messages = compare_datasets(
+        args.actual, args.expected,
+        rtol=args.rtol, atol=args.atol
+    )
+
+    for msg in messages:
+        print(msg)
+
+    if success:
+        print("-" * 50)
+        print("比较结果: 通过")
+        return 0
+    else:
+        print("-" * 50)
+        print("比较结果: 失败")
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

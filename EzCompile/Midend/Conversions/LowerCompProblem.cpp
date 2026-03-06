@@ -28,6 +28,44 @@
 
 namespace ezcompile {
 
+// 创建/复用 timer_start 声明：() -> void
+static mlir::func::FuncOp getOrCreateTimerStartDecl(mlir::ModuleOp module,
+													 mlir::OpBuilder &b,
+													 mlir::Location loc) {
+	mlir::MLIRContext *ctx = module.getContext();
+	std::string fnName = "timer_start";
+
+	if (auto existing = module.lookupSymbol<mlir::func::FuncOp>(fnName))
+		return existing;
+
+	auto fnTy = mlir::FunctionType::get(ctx, {}, {});
+
+	mlir::OpBuilder::InsertionGuard g(b);
+	b.setInsertionPointToStart(module.getBody());
+	auto f = b.create<mlir::func::FuncOp>(loc, fnName, fnTy);
+	f.setPrivate();
+	return f;
+}
+
+// 创建/复用 timer_stop_and_print 声明：() -> void
+static mlir::func::FuncOp getOrCreateTimerStopDecl(mlir::ModuleOp module,
+													mlir::OpBuilder &b,
+													mlir::Location loc) {
+	mlir::MLIRContext *ctx = module.getContext();
+	std::string fnName = "timer_stop_and_print";
+
+	if (auto existing = module.lookupSymbol<mlir::func::FuncOp>(fnName))
+		return existing;
+
+	auto fnTy = mlir::FunctionType::get(ctx, {}, {});
+
+	mlir::OpBuilder::InsertionGuard g(b);
+	b.setInsertionPointToStart(module.getBody());
+	auto f = b.create<mlir::func::FuncOp>(loc, fnName, fnTy);
+	f.setPrivate();
+	return f;
+}
+
 static mlir::func::FuncOp getOrCreateDumpDecl(mlir::ModuleOp module,
 											  mlir::OpBuilder &b,
 											  mlir::Location loc,
@@ -135,6 +173,11 @@ struct LowerProblemPattern : mlir::OpConversionPattern<comp::ProblemOp> {
 
 		rewriter.setInsertionPointToEnd(entry);
 
+		// ===== 位置1：开始计时 =====
+		auto module = op->getParentOfType<mlir::ModuleOp>();
+		auto timerStartDecl = getOrCreateTimerStartDecl(module, rewriter, op.getLoc());
+		rewriter.create<mlir::func::CallOp>(op.getLoc(), timerStartDecl, mlir::ValueRange());
+
 		llvm::SmallVector<mlir::Operation *, 16> opsToMove;
 		opsToMove.reserve(problemBlock.getOperations().size());
 		for (mlir::Operation &inner : problemBlock.getOperations()) {
@@ -172,6 +215,10 @@ struct LowerProblemPattern : mlir::OpConversionPattern<comp::ProblemOp> {
 		if (rank < 2 || rank > 4)
 			return rewriter.notifyMatchFailure(op, "dump only supports rank 2..4");
 
+		// ===== 位置2：停止计时 =====
+		auto timerStopDecl = getOrCreateTimerStopDecl(module, rewriter, op.getLoc());
+		rewriter.create<mlir::func::CallOp>(op.getLoc(), timerStopDecl, mlir::ValueRange());
+
 		// timeIndex = (tPoints % 2) as i64 constant
 		int64_t tPoints = (int64_t)timeDim.getPoints();
 		int64_t timeIndex = tPoints % 2;
@@ -179,7 +226,7 @@ struct LowerProblemPattern : mlir::OpConversionPattern<comp::ProblemOp> {
 				op.getLoc(), rewriter.getI64IntegerAttr(timeIndex));
 
 		mlir::MLIRContext *ctx = rewriter.getContext();
-		auto llvmPtrTy = mlir::LLVM::LLVMPointerType::get(ctx); // !llvm.ptr
+		auto llvmPtrTy = mlir::LLVM::LLVMPointerType::get(ctx);
 		auto f64Ty = rewriter.getF64Type();
 
 		// 为 dimNames/lowers/uppers 在栈上建数组：llvm.alloca (elem_type + arraySize) :contentReference[oaicite:6]{index=6}
@@ -244,7 +291,6 @@ struct LowerProblemPattern : mlir::OpConversionPattern<comp::ProblemOp> {
 			rewriter.create<mlir::LLVM::StoreOp>(op.getLoc(), upC, upSlot);
 		}
 
-		auto module = op->getParentOfType<mlir::ModuleOp>();
 		auto dumpDecl = getOrCreateDumpDecl(module, rewriter, op.getLoc(), memrefTy);
 
 		// func.call @dump_result_hdf5_f64_rank{rank}(memref, i64, !llvm.ptr, !llvm.ptr, !llvm.ptr) : i32

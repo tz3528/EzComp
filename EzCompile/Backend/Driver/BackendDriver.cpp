@@ -34,10 +34,10 @@ void Backend::dumpLLVMIR(llvm::Module &module) {
 }
 
 std::vector<std::string> Backend::getRequiredArchives() {
-    std::vector<std::string> archives;
-    archives.push_back("IO.HDF5");
-    return archives;
-}
+	std::vector<std::string> archives;
+	archives.push_back("IO.HDF5");
+	archives.push_back("Timer");
+	return archives;}
 
 mlir::LogicalResult Backend::codeGen(llvm::Module &module,
                                       llvm::TargetMachine &targetMachine,

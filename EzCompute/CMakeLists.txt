@@ -10,6 +10,7 @@ set(EZ_RUNTIME_MANIFEST_IN  "${CMAKE_SOURCE_DIR}/EzCompute/EzComputeRuntime.mani
 set(EZ_RUNTIME_MANIFEST_OUT "${CMAKE_BINARY_DIR}/EzComputeRuntime.manifest.json")
 
 add_subdirectory(IO)
+add_subdirectory(Timer)
 
 configure_file("${EZ_RUNTIME_MANIFEST_IN}" "${EZ_RUNTIME_MANIFEST_OUT}" @ONLY)
 
