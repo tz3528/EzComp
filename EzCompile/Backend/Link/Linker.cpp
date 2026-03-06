@@ -47,7 +47,7 @@ static const char* mathFunctions[] = {
 mlir::LogicalResult ManifestParser::load(const fs::path& path, ManifestParser& parser) {
     // 检查文件是否存在
     if (!fs::exists(path)) {
-        llvm::errs() << "Manifest file not found: " << path << "\n";
+        llvm::errs() << "Manifest file not found: " << path.string() << "\n";
         return mlir::failure();
     }
     
@@ -135,9 +135,15 @@ mlir::LogicalResult ManifestParser::getArchivePath(const std::string& key, std::
         return mlir::failure();
     }
     
-    // 拼接 baseDir + value
-    fs::path fullPath = baseDir / it->second;
-    archive = fullPath.string();
+    fs::path path(it->second);
+    if (path.is_absolute()) {
+        // 已经是绝对路径，直接使用
+        archive = it->second;
+    } else {
+        // 相对路径：拼接 baseDir + value
+        fs::path fullPath = baseDir / it->second;
+        archive = fullPath.string();
+    }
     return mlir::success();
 }
 
@@ -163,11 +169,9 @@ std::string LibraryDetector::getMathLibraryName(const llvm::Triple &triple) {
     }
 }
 
-DetectedLibraries LibraryDetector::detect(llvm::Module &module,
-                                           const std::string &targetTripleStr) {
+DetectedLibraries LibraryDetector::detect(llvm::Module &module) {
     DetectedLibraries result;
-    std::string tripleStr = targetTripleStr.empty() 
-        ? module.getTargetTriple().str() : targetTripleStr;
+    std::string tripleStr = module.getTargetTriple().str();
     llvm::Triple triple(tripleStr);
     
     bool needMath = false;
@@ -191,23 +195,10 @@ DetectedLibraries LibraryDetector::detect(llvm::Module &module,
 // Linker
 //===----------------------------------------------------------------------===//
 
-std::string Linker::findClang() {
-    if (auto clangxx = llvm::sys::findProgramByName("clang++"))
-        return *clangxx;
-    if (llvm::sys::fs::exists("/usr/bin/clang++"))
-        return "/usr/bin/clang++";
-    return "clang++";
-}
-
 std::vector<std::string> Linker::buildCommandLine() const {
     std::vector<std::string> args;
-    args.push_back(findClang());
+    args.push_back(EZCOMP_CXX_COMPILER);
     
-    if (!config.targetTriple.empty()) {
-        args.push_back("-target");
-        args.push_back(config.targetTriple);
-    }
-
     args.push_back(config.objectFile);
     
     args.push_back("-o");
@@ -218,6 +209,9 @@ std::vector<std::string> Linker::buildCommandLine() const {
     }
 
     for (const auto &lib : config.libraries) {
+        // 跳过空字符串
+        if (lib.empty()) continue;
+
         // 判断是完整路径还是库名
         // 路径包含 '/' 或以 .so/.a/.lib 结尾，直接传递；否则加 -l 前缀
         if (lib.find('/') != std::string::npos ||
@@ -263,7 +257,6 @@ mlir::LogicalResult Linker::run() {
 mlir::LogicalResult Linker::linkModule(llvm::Module &module,
                                         const std::string &objectFile,
                                         const std::string &outputFile,
-                                        const std::string &targetTriple,
                                         const std::vector<std::string> archives) {
     // 加载 manifest JSON
     ManifestParser parser;
@@ -271,7 +264,7 @@ mlir::LogicalResult Linker::linkModule(llvm::Module &module,
         return mlir::failure();
     }
     
-    auto detected = LibraryDetector::detect(module, targetTriple);
+    auto detected = LibraryDetector::detect(module);
     
     if (!detected.libraries.empty()) {
         llvm::errs() << "Required libraries:";
@@ -283,7 +276,6 @@ mlir::LogicalResult Linker::linkModule(llvm::Module &module,
     LinkerConfig config;
     config.objectFile = objectFile;
     config.outputFile = outputFile;
-    config.targetTriple = targetTriple;
     config.libraries = std::vector<std::string>(detected.libraries.begin(), 
                                                  detected.libraries.end());
     

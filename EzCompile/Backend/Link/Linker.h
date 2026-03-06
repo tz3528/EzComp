@@ -75,7 +75,7 @@ struct DetectedLibraries {
 /// 库检测器
 class LibraryDetector {
 public:
-    static DetectedLibraries detect(llvm::Module &module, const std::string &targetTriple);
+    static DetectedLibraries detect(llvm::Module &module);
 private:
     static bool isMathFunction(const std::string &funcName);
     static std::string getMathLibraryName(const llvm::Triple &triple);
@@ -92,13 +92,11 @@ public:
     static mlir::LogicalResult linkModule(llvm::Module &module,
                                            const std::string &objectFile,
                                            const std::string &outputFile,
-                                           const std::string &targetTriple,
                                            const std::vector<std::string> archives);
 
 private:
     LinkerConfig config;
     
-    static std::string findClang();
     std::vector<std::string> buildCommandLine() const;
 };
 

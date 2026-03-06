@@ -47,10 +47,8 @@ mlir::LogicalResult Backend::codeGen(llvm::Module &module,
 }
 
 mlir::LogicalResult Backend::fullCompile(llvm::Module &module) {
-    // 获取目标三元组
-    std::string tripleStr = config.targetTripleVal.empty()
-        ? llvm::sys::getDefaultTargetTriple()
-        : config.targetTripleVal;
+    // 获取默认目标三元组
+    std::string tripleStr = llvm::sys::getDefaultTargetTriple();
 
     // 初始化目标
     llvm::InitializeAllTargetInfos();
@@ -91,8 +89,7 @@ mlir::LogicalResult Backend::fullCompile(llvm::Module &module) {
     }
 
     // 链接
-    if (mlir::failed(link::Linker::linkModule(module, objFile, exeFile,
-											  tripleStr, getRequiredArchives()))) {
+    if (mlir::failed(link::Linker::linkModule(module, objFile, exeFile, getRequiredArchives()))) {
         return mlir::failure();
     }
 

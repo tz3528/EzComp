@@ -17,7 +17,6 @@ namespace ezcompile::link {
 struct LinkerConfig {
     std::string objectFile;
     std::string outputFile = "a.out";
-    std::string targetTriple;
     std::vector<std::string> libraries;
     std::vector<std::string> archives;
     bool verbose = false;

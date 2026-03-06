@@ -1,7 +1,9 @@
 {
   "version": 1,
   "archives": {
-    "IO.HDF5": "@EZCOMPUTE_HDF5_REL@"
+    "IO.HDF5": "@EZCOMPUTE_HDF5_WRAPPER_REL@"
   },
-  "libraries": [@EZCOMPUTE_HDF5_LIBS@]
+  "libraries": [
+    "@EZCOMPUTE_HDF5_LIBS@"
+  ]
 }
