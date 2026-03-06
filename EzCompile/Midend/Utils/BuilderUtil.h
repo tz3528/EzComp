@@ -24,6 +24,33 @@ inline mlir::Value constIndex(mlir::OpBuilder &builder, mlir::Location location,
 	return mlir::arith::ConstantIndexOp::create(builder, location, value);
 }
 
+/// 将任意数值类型转换为 i64（支持 float/index/integer）
+inline mlir::Value castToI64(mlir::OpBuilder& b, mlir::Location loc, mlir::Value v) {
+	mlir::Type t = v.getType();
+	mlir::Type i64 = b.getI64Type();
+
+	if (t == i64) return v;
+
+	if (auto it = dyn_cast<mlir::IntegerType>(t)) {
+		if (it.getWidth() < 64) {
+			return mlir::arith::ExtSIOp::create(b, loc, i64, v);
+		}
+		if (it.getWidth() > 64) {
+			return mlir::arith::TruncIOp::create(b, loc, i64, v);
+		}
+	}
+
+	if (llvm::isa<mlir::IndexType>(t)) {
+		return mlir::arith::IndexCastOp::create(b, loc, i64, v);
+	}
+
+	if (llvm::isa<mlir::FloatType>(t)) {
+		return mlir::arith::FPToSIOp::create(b, loc, i64, v);
+	}
+
+	llvm_unreachable("Unsupported type for castToI64");
+}
+
 /// 将任意数值类型转换为 f64（支持 float/index/integer）
 inline mlir::Value castToF64(mlir::OpBuilder& b, mlir::Location loc, mlir::Value v) {
 	mlir::Type t = v.getType();
