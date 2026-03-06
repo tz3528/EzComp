@@ -13,14 +13,14 @@
 #include <hdf5.h>
 
 // 网格参数
-constexpr int NX = 51;      // x 方向点数
-constexpr int NY = 51;      // y 方向点数
-constexpr int NT = 100;     // 时间步数
+constexpr int NX = 501;     // x 方向点数
+constexpr int NY = 501;     // y 方向点数
+constexpr int NT = 1000;    // 时间步数
 
 constexpr double X_LOWER = 0.0;
-constexpr double X_UPPER = 50.0;
+constexpr double X_UPPER = 500.0;
 constexpr double Y_LOWER = 0.0;
-constexpr double Y_UPPER = 50.0;
+constexpr double Y_UPPER = 500.0;
 
 constexpr double ALPHA = 0.5;  // 热扩散系数
 

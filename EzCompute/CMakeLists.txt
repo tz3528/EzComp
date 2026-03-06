@@ -12,5 +12,8 @@ set(EZ_RUNTIME_MANIFEST_OUT "${CMAKE_BINARY_DIR}/EzComputeRuntime.manifest.json"
 add_subdirectory(IO)
 add_subdirectory(Timer)
 
-configure_file("${EZ_RUNTIME_MANIFEST_IN}" "${EZ_RUNTIME_MANIFEST_OUT}" @ONLY)
+# 传递 HDF5 相关变量到父作用域 (供 compare 测试使用)
+set(EZCOMPUTE_HDF5_LIBS "${EZCOMPUTE_HDF5_LIBS}" PARENT_SCOPE)
+set(EZCOMPUTE_HDF5_INCLUDE_DIRS "${EZCOMPUTE_HDF5_INCLUDE_DIRS}" PARENT_SCOPE)
 
+configure_file("${EZ_RUNTIME_MANIFEST_IN}" "${EZ_RUNTIME_MANIFEST_OUT}" @ONLY)

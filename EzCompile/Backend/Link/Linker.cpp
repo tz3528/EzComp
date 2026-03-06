@@ -209,19 +209,24 @@ std::vector<std::string> Linker::buildCommandLine() const {
     }
 
     for (const auto &lib : config.libraries) {
-        // 跳过空字符串
-        if (lib.empty()) continue;
-
-        // 判断是完整路径还是库名
-        // 路径包含 '/' 或以 .so/.a/.lib 结尾，直接传递；否则加 -l 前缀
-        if (lib.find('/') != std::string::npos ||
-            lib.find('\\') != std::string::npos ||
-            lib.find(".so") != std::string::npos ||
-            lib.find(".a") != std::string::npos ||
-            lib.find(".lib") != std::string::npos) {
-            args.push_back(lib);
-        } else {
-            args.push_back("-l" + lib);
+        // 按分号分割（处理 CMake 传递的分号分隔列表）
+        llvm::SmallVector<llvm::StringRef, 8> libs;
+        llvm::StringRef(lib).split(libs, ';');
+        
+        for (auto segment : libs) {
+            if (segment.empty()) continue;
+            
+            // 判断是完整路径还是库名
+            // 路径包含 '/' 或以 .so/.a/.lib 结尾，直接传递；否则加 -l 前缀
+            if (segment.find('/') != llvm::StringRef::npos ||
+                segment.find('\\') != llvm::StringRef::npos ||
+                segment.contains(".so") ||
+                segment.contains(".a") ||
+                segment.contains(".lib")) {
+                args.push_back(segment.str());
+            } else {
+                args.push_back("-l" + segment.str());
+            }
         }
     }
     
