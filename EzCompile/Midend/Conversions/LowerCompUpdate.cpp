@@ -137,10 +137,16 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 			rewriter.eraseOp(s);
 		}
 
-		// 存储 yield 值
+		// 存储 yield 值 - 写入下一个时间步 + 1) % 2
 		rewriter.setInsertionPoint(yieldOp);
 
 		mlir::Value yieldedF64 = castToF64(rewriter, yieldOp.getLoc(), yieldOp.getOperand(0));
+
+		// 修改时间索引为 (atTime + 1) % 2
+		mlir::Value one = constIndex(rewriter, loc, 1);
+		mlir::Value atTimePlusOne = mlir::arith::AddIOp::create(rewriter, loc, op.getAtTime(), one);
+		mlir::Value storeTimeVar = modIndex(rewriter, loc, atTimePlusOne, 2);
+		indices[0] = storeTimeVar;
 
 		mlir::memref::StoreOp::create(rewriter, yieldOp.getLoc(), yieldedF64, memref, indices);
 		rewriter.eraseOp(yieldOp);
