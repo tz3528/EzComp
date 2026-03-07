@@ -477,7 +477,7 @@ def verify_results(all_data, rtol=1e-6):
     abs_diff = np.abs(ezcomp_result - ref_result)
     
     with np.errstate(divide='ignore', invalid='ignore'):
-        rel_diff = np.abs(ezcomp_result - ref_result) / np.abs(ref_result)
+        rel_diff = abs_diff / np.abs(ref_result)
         rel_diff = np.where(np.abs(ref_result) < 1e-10, abs_diff, rel_diff)
     
     max_abs_diff = np.max(abs_diff)
@@ -486,7 +486,7 @@ def verify_results(all_data, rtol=1e-6):
     # 找到最大误差的位置
     max_rel_idx = np.unravel_index(np.nanargmax(rel_diff), rel_diff.shape)
     
-    print(f"\n结果验证 (相对容差: {rtol}):")
+    print(f"\n结果验证:")
     print(f"  最大绝对误差: {max_abs_diff:.6e}")
     print(f"  最大相对误差: {max_rel_diff:.6e}")
     print(f"  最大相对误差位置: {max_rel_idx}")
