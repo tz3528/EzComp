@@ -122,6 +122,22 @@ def CoordOp : Comp_Op<"coord"> {
     let assemblyFormat = "$dim $iv attr-dict `:` type($coord)";
 }
 
+def DeltaOp : Comp_Op<"delta"> {
+    let summary = "Delta op with f64 var and non-negative i64 rank.";
+
+    let arguments = (ins
+        FlatSymbolRefAttr:$dim,   // @x / @t
+        I64Attr:$rank
+    );
+
+    let results = (outs F64:$delta);
+
+    // 示例打印： %x = comp.delta @x %rank : f64
+    let assemblyFormat = "$dim $rank attr-dict `:` type($delta)";
+
+    let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // 结构化求解（Structured solve）
 //===----------------------------------------------------------------------===//

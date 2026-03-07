@@ -725,21 +725,40 @@ mlir::FailureOr<mlir::Value> MLIRGen::genCallExpr(const CallExprAST* expr) {
 	}
 
 	llvm::SmallVector<mlir::Value, 8> operands;
-
 	for (auto &arg : expr->getArgs()) {
 		auto vOr = genExpr(arg.get());
 		if (mlir::failed(vOr)) {
 			return mlir::failure();
 		}
-
 		operands.push_back(*vOr);
 	}
 
 	auto calleeName  = expr->getCallee().str();
 	auto calleeAttr  = mlir::FlatSymbolRefAttr::get(&context, calleeName);
-	mlir::Value callOp = comp::CallOp::create(builder, loc, f64Ty, calleeAttr, operands).getResult();
 
-	return callOp;
+	if(calleeName == "delta"){
+		if(expr->getArgs().size() != 2){
+			return mlir::emitError(loc, "The number of parameters for the delta function must be 2");
+		}
+		auto tmp = expr->getArgs()[0].get();
+		if(auto var = llvm::dyn_cast<VarRefExprAST>(tmp)){
+			auto id = sema->st.lookup(var->getName().str())->id;
+			if(auto rank = llvm::dyn_cast<IntExprAST>(expr->getArgs()[1].get())){
+				auto dimAttr = mkDimRef(id);
+				auto rankAttr = builder.getI64IntegerAttr(rank->getValue());
+				return comp::DeltaOp::create(builder, loc, f64Ty, dimAttr, rankAttr).getResult();
+			}
+			else {
+				return mlir::emitError(loc, "The second dimension of the delta function must be a int");
+			}
+		}
+		else {
+			return mlir::emitError(loc, "The first dimension of the delta function must be a variable");
+		}
+	}
+	else {
+		return comp::CallOp::create(builder, loc, f64Ty, calleeAttr, operands).getResult();
+	}
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genParenExpr(const ParenExprAST* expr) {

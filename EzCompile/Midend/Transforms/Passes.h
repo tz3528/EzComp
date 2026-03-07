@@ -33,6 +33,7 @@ void registerLowerCompUpdatePass();
 void registerLowerCompDimPass();
 void registerLowerCompProblemPass();
 void registerLowerCompCallPass();
+void registerLowerCompDeltaPass();
 
 /// 注册所有 Pass
 inline void registerPasses() {
@@ -46,6 +47,7 @@ inline void registerPasses() {
 	registerLowerCompDimPass();
 	registerLowerCompProblemPass();
 	registerLowerCompCallPass();
+	registerLowerCompDeltaPass();
 }
 
 }
