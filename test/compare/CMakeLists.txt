@@ -2,16 +2,6 @@
 
 # 检查 Python 包依赖
 if(Python3_Interpreter_FOUND)
-    # 检查 pandas
-    execute_process(
-        COMMAND ${Python3_EXECUTABLE} -c "import pandas"
-        RESULT_VARIABLE PANDAS_CHECK
-        OUTPUT_QUIET ERROR_QUIET
-    )
-    if(NOT PANDAS_CHECK EQUAL 0)
-        message(WARNING "pandas not found, compare tests may fail. Install with: pip install pandas")
-    endif()
-
     # 检查 h5py
     execute_process(
         COMMAND ${Python3_EXECUTABLE} -c "import h5py"
@@ -20,6 +10,16 @@ if(Python3_Interpreter_FOUND)
     )
     if(NOT H5PY_CHECK EQUAL 0)
         message(WARNING "h5py not found, compare tests may fail. Install with: pip install h5py")
+    endif()
+
+    # 检查 matplotlib
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} -c "import matplotlib"
+        RESULT_VARIABLE MATPLOTLIB_CHECK
+        OUTPUT_QUIET ERROR_QUIET
+    )
+    if(NOT MATPLOTLIB_CHECK EQUAL 0)
+        message(WARNING "matplotlib not found, performance plot will not be generated. Install with: pip install matplotlib")
     endif()
 endif()
 
@@ -30,10 +30,16 @@ if(NOT EZCOMP_EXE)
 endif()
 set(EZCOMP_EXECUTABLE "${EZCOMP_EXE}/ezcomp${CMAKE_EXECUTABLE_SUFFIX}")
 
+# 获取 C++ 编译器路径
+set(CXX_COMPILER "${CMAKE_CXX_COMPILER}")
+
+# HDF5 库和头文件路径 (从 EzCompute 传递)
+set(HDF5_INCLUDE_DIRS "${EZCOMPUTE_HDF5_INCLUDE_DIRS}")
+
 # 测试数据源码目录
 set(COMPARE_TEST_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# 配置比较测试脚本 (注入 ezcomp 路径和源码目录)
+# 配置比较测试脚本 (注入 ezcomp 路径、编译器、HDF5 信息和源码目录)
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/compare.py.in
     ${CMAKE_CURRENT_BINARY_DIR}/compare.py

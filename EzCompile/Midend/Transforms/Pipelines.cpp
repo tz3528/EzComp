@@ -19,6 +19,7 @@ namespace ezcompile {
 void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 
 	if (opt.enableLowerToBase.getValue() || opt.enableToLLVM.getValue()) {
+		pm.addPass(createLowerCompDeltaPass());
 		pm.addPass(createLowerCompCallPass());
 		pm.addPass(createLowerCompPointsPass());
 		pm.addPass(createLowerCompFieldPass());
@@ -33,6 +34,13 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 		// 优化：规范化 + 常量折叠 + CSE
 		pm.addPass(mlir::createCanonicalizerPass());
 		pm.addPass(mlir::createCSEPass());
+
+
+		// 循环优化：Affine LICM（将 affine.for 内部的 loop-invariant 计算提到循环外）
+		auto &fpm = pm.nest<mlir::func::FuncOp>();
+		fpm.addPass(mlir::affine::createAffineLoopInvariantCodeMotionPass());
+		fpm.addPass(mlir::createCanonicalizerPass());
+		fpm.addPass(mlir::createCSEPass());
 	}
 
 	//===--------------------------------------------------------------------===//

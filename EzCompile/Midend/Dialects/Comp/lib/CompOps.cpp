@@ -237,4 +237,13 @@ mlir::LogicalResult CallOp::verify() {
     return mlir::success();
 }
 
+mlir::LogicalResult DeltaOp::verify() {
+	auto rank = getRank();
+	if(rank < 0){
+		return emitOpError("rank must be non-negative");
+	}
+
+	return mlir::success();
+}
+
 }

@@ -20,6 +20,8 @@
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Dialect/Affine/Passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Transforms/Passes.h"
@@ -74,6 +76,7 @@ std::unique_ptr<mlir::Pass> createLowerCompUpdatePass();
 std::unique_ptr<mlir::Pass> createLowerCompSolvePass();
 std::unique_ptr<mlir::Pass> createLowerCompProblemPass();
 std::unique_ptr<mlir::Pass> createLowerCompCallPass();
+std::unique_ptr<mlir::Pass> createLowerCompDeltaPass();
 
 } // namespace ezcompile
 

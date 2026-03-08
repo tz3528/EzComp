@@ -50,10 +50,51 @@ struct LowerCallDeltaPattern : mlir::OpConversionPattern<comp::CallOp> {
 		mlir::Value var = adaptor.getOperands()[0];
 		mlir::Value rank = adaptor.getOperands()[1];
 
-		auto var_f = castToF64(rewriter, loc, var);
-		auto rank_f = castToF64(rewriter, loc, rank);
+		// rank 必须是常量
+		auto rankConstOp = rank.getDefiningOp<mlir::arith::ConstantOp>();
+		if (!rankConstOp) {
+			return mlir::emitError(loc, "delta: rank must be a compile-time constant");
+		}
 
-		mlir::Value result = rewriter.create<mlir::math::PowFOp>(loc, var_f, rank_f);
+		// 提取 rank 的整数值
+		int64_t rankVal = 0;
+		if (auto intAttr = llvm::dyn_cast<mlir::IntegerAttr>(rankConstOp.getValue())) {
+			rankVal = intAttr.getInt();
+		} else if (auto floatAttr = llvm::dyn_cast<mlir::FloatAttr>(rankConstOp.getValue())) {
+			double fval = floatAttr.getValueAsDouble();
+			if (fval != std::floor(fval)) {
+				return mlir::emitError(loc, "delta: rank must be an integer, got ") << fval;
+			}
+			rankVal = static_cast<int64_t>(fval);
+		} else {
+			return mlir::emitError(loc, "delta: rank must be integer or float constant");
+		}
+
+		if (rankVal < 0) {
+			return mlir::emitError(loc, "delta: rank must be non-negative, got ") << rankVal;
+		}
+
+		mlir::Value var_f = castToF64(rewriter, loc, var);
+
+		// rank == 0: 结果是 1.0
+		if (rankVal == 0) {
+			mlir::Value one = rewriter.create<mlir::arith::ConstantFloatOp>(
+					loc, llvm::cast<mlir::FloatType>(rewriter.getF64Type()), mlir::APFloat(1.0));
+			rewriter.replaceOp(op, one);
+			return mlir::success();
+		}
+
+		// rank == 1: 结果是 var 本身
+		if (rankVal == 1) {
+			rewriter.replaceOp(op, var_f);
+			return mlir::success();
+		}
+
+		// rank > 1: 展开 (rank-1) 次乘法
+		mlir::Value result = var_f;
+		for (int64_t i = 1; i < rankVal; ++i) {
+			result = rewriter.create<mlir::arith::MulFOp>(loc, result, var_f);
+		}
 
 		rewriter.replaceOp(op, result);
 		return mlir::success();

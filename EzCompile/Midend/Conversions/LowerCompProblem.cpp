@@ -220,7 +220,7 @@ struct LowerProblemPattern : mlir::OpConversionPattern<comp::ProblemOp> {
 		rewriter.create<mlir::func::CallOp>(op.getLoc(), timerStopDecl, mlir::ValueRange());
 
 		// timeIndex = (tPoints % 2) as i64 constant
-		int64_t tPoints = (int64_t)timeDim.getPoints();
+		int64_t tPoints = (int64_t)timeDim.getPoints() - 1;
 		int64_t timeIndex = tPoints % 2;
 		auto timeIndexConst = rewriter.create<mlir::arith::ConstantOp>(
 				op.getLoc(), rewriter.getI64IntegerAttr(timeIndex));

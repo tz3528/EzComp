@@ -42,6 +42,11 @@ if(EZCOMP_BUILD_HDF5_SUBMODULE)
     # 设置 HDF5 库路径
     set(HDF5_STATIC_LIB "${HDF5_OUTPUT_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}hdf5${CMAKE_STATIC_LIBRARY_SUFFIX}")
     set(EZCOMPUTE_HDF5_LIBS "${HDF5_STATIC_LIB}" PARENT_SCOPE)
+    set(EZCOMPUTE_HDF5_INCLUDE_DIRS 
+        "${CMAKE_CURRENT_SOURCE_DIR}/hdf5/src"
+        "${CMAKE_CURRENT_BINARY_DIR}/hdf5-build"
+        PARENT_SCOPE
+    )
     
     target_link_libraries(HDF5Wrapper PRIVATE
         hdf5-static
@@ -59,6 +64,7 @@ else()
     
     # 设置 HDF5 库路径
     set(EZCOMPUTE_HDF5_LIBS "${HDF5_C_LIBRARIES}" PARENT_SCOPE)
+    set(EZCOMPUTE_HDF5_INCLUDE_DIRS "${HDF5_C_INCLUDE_DIRS}" PARENT_SCOPE)
     
     target_link_libraries(HDF5Wrapper PRIVATE
         ${HDF5_C_LIBRARIES}

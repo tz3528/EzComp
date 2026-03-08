@@ -13,14 +13,14 @@
 #include <hdf5.h>
 
 // 网格参数
-constexpr int NX = 51;      // x 方向点数
-constexpr int NY = 51;      // y 方向点数
-constexpr int NT = 100;     // 时间步数
+constexpr int NX = 501;     // x 方向点数
+constexpr int NY = 501;     // y 方向点数
+constexpr int NT = 4000;    // 时间步数
 
 constexpr double X_LOWER = 0.0;
-constexpr double X_UPPER = 50.0;
+constexpr double X_UPPER = 500.0;
 constexpr double Y_LOWER = 0.0;
-constexpr double Y_UPPER = 50.0;
+constexpr double Y_UPPER = 500.0;
 
 constexpr double ALPHA = 0.5;  // 热扩散系数
 
@@ -56,7 +56,7 @@ static bool write_hdf5(const char* output_file,
     if (file < 0) return false;
 
     // 写入 result 数据集
-    hsize_t dims[2] = { static_cast<hsize_t>(NY), static_cast<hsize_t>(NX) };
+    hsize_t dims[2] = { static_cast<hsize_t>(NX), static_cast<hsize_t>(NY) };
     hid_t space = H5Screate_simple(2, dims, nullptr);
     if (space < 0) { H5Fclose(file); return false; }
 
@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
 
     double dx = (X_UPPER - X_LOWER) / (NX - 1);
     double dy = (Y_UPPER - Y_LOWER) / (NY - 1);
-    double dt = 1.0;
+    double dt = 0.25;
 
     for (int i = 0; i < NX; ++i) {
         coord_x[i] = X_LOWER + i * dx;
