@@ -44,13 +44,15 @@
 #include "EzCompile/Frontend/include/AST.h"
 #include "EzCompile/Frontend/include/Semantic/Semantic.h"
 #include "IRGen/MLIRGen.h"
-#include "Transforms/Pipelines.h"
-#include "Transforms/Passes.h"
+#include "Transforms/LowerPipelines.h"
+#include "Transforms/LowerPasses.h"
+#include "Transforms/OptPipelines.h"
 #include "Driver/BackendDriver.h"
 #include "Driver/BackendOptions.h"
 
 namespace cl = llvm::cl;
 using namespace ezcompile;
+using namespace ezresearch;
 
 /// 仅注册项目需要的 LLVM 转换扩展，避免链接不需要的库
 static void registerNeededExtensions(mlir::DialectRegistry &registry) {
@@ -143,7 +145,7 @@ static void LoadDialect(mlir::MLIRContext &context) {
     context.getOrLoadDialect<mlir::ub::UBDialect>();
 }
 
-struct PipelineOptions : LoweringOptions {};
+struct PipelineOptions : LoweringOptions, OptimizationOptions {};
 
 void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
     //===--------------------------------------------------------------------===//

@@ -1,4 +1,4 @@
-//===-- Pipelines.h --------------------------------------------*- C++ -*-===//
+//===-- LowerPipelines.h ---------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 
-#ifndef EZ_COMPILE_PIPELINES_H
-#define EZ_COMPILE_PIPELINES_H
+#ifndef EZ_COMPILE_LOWER_PIPELINES_H
+#define EZ_COMPILE_LOWER_PIPELINES_H
 
 #include "llvm/Support/CommandLine.h"
 
@@ -81,4 +81,4 @@ void ToLLVM(mlir::OpPassManager &pm);
 
 } // namespace ezcompile
 
-#endif //EZ_COMPILE_PIPELINES_H
+#endif //EZ_COMPILE_LOWER_PIPELINES_H

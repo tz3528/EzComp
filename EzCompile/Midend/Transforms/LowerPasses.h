@@ -1,4 +1,4 @@
-//===-- Passes.h -----------------------------------------------*- C++ -*-===//
+//===-- LowerPasses.h -------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 
-#ifndef EZ_COMPILE_PASSES_H
-#define EZ_COMPILE_PASSES_H
+#ifndef EZ_COMPILE_LOWER_PASSES_H
+#define EZ_COMPILE_LOWER_PASSES_H
 
 #include "mlir/Pass/Pass.h"
 
@@ -52,4 +52,4 @@ inline void registerPasses() {
 
 }
 
-#endif //EZ_COMPILE_PASSES_H
+#endif //EZ_COMPILE_LOWER_PASSES_H
