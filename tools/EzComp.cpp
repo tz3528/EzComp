@@ -143,6 +143,45 @@ static void LoadDialect(mlir::MLIRContext &context) {
     context.getOrLoadDialect<mlir::ub::UBDialect>();
 }
 
+struct PipelineOptions : LoweringOptions {};
+
+void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
+    //===--------------------------------------------------------------------===//
+    // 阶段1：Comp → Base
+    //===--------------------------------------------------------------------===//
+	if (opt.enableLowerToBase.getValue() || opt.enableToLLVM.getValue()) {
+	    LowerToBase(pm);
+	}
+
+	//===--------------------------------------------------------------------===//
+	// 阶段2：Affine → SCF
+	//===--------------------------------------------------------------------===//
+	if (opt.enableAffineToSCF.getValue() || opt.enableToLLVM.getValue()) {
+	    AffineToSCF(pm);
+	}
+
+	//===--------------------------------------------------------------------===//
+	// 阶段3：SCF → ControlFlow
+	//===--------------------------------------------------------------------===//
+	if (opt.enableSCFToCF.getValue() || opt.enableToLLVM.getValue()) {
+	    SCFToCF(pm);
+	}
+
+	//===--------------------------------------------------------------------===//
+	// 阶段4：基础方言 → LLVM
+	//===--------------------------------------------------------------------===//
+	if (opt.enableToLLVM.getValue()) {
+	    ToLLVM(pm);
+	}
+}
+
+void registerPipelines() {
+	mlir::PassPipelineRegistration<PipelineOptions>(
+		"lowering",
+		"Lower Comp dialect via staged lowering with configurable options",
+		buildPipeline);
+}
+
 static int dumpAST() {
     if (inputType == InputType::MLIR) {
         llvm::errs() << "Can't dump a Comp AST when the input is MLIR\n";
@@ -277,6 +316,7 @@ static int compile() {
     if (!moduleAST) {
         return 1;
     }
+
 
     mlir::DialectRegistry registry;
     registerNeededExtensions(registry);

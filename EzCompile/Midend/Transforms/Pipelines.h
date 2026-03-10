@@ -30,7 +30,7 @@
 namespace ezcompile {
 
 /// Pipeline 选项，控制四阶段降级流程
-struct PipelineOptions : mlir::PassPipelineOptions<PipelineOptions> {
+struct LoweringOptions : mlir::PassPipelineOptions<LoweringOptions> {
 
 	/// Comp 方言 → 基础方言 (Affine/Arith/MemRef)
 	Option<bool> enableLowerToBase{
@@ -58,10 +58,6 @@ struct PipelineOptions : mlir::PassPipelineOptions<PipelineOptions> {
 
 };
 
-void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt);
-
-void registerPipelines();
-
 //===----------------------------------------------------------------------===//
 // Pass
 //===----------------------------------------------------------------------===//
@@ -77,6 +73,11 @@ std::unique_ptr<mlir::Pass> createLowerCompSolvePass();
 std::unique_ptr<mlir::Pass> createLowerCompProblemPass();
 std::unique_ptr<mlir::Pass> createLowerCompCallPass();
 std::unique_ptr<mlir::Pass> createLowerCompDeltaPass();
+
+void LowerToBase(mlir::OpPassManager &pm);
+void AffineToSCF(mlir::OpPassManager &pm);
+void SCFToCF(mlir::OpPassManager &pm);
+void ToLLVM(mlir::OpPassManager &pm);
 
 } // namespace ezcompile
 
