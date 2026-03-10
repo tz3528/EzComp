@@ -36,24 +36,6 @@ enum class CompileMode {
 // 代码生成选项
 //===----------------------------------------------------------------------===//
 
-/// 优化级别枚举
-enum class OptLevel {
-    O0 = 0,  // 无优化
-    O1 = 1,  // 基础优化
-    O2 = 2,  // 标准优化
-    O3 = 3   // 激进优化
-};
-
-inline cl::opt<OptLevel> optLevel(
-    "O",
-    cl::desc("Optimization level"),
-    cl::init(OptLevel::O3),
-    cl::values(
-        clEnumValN(OptLevel::O0, "0", "No optimization"),
-        clEnumValN(OptLevel::O1, "1", "Basic optimization"),
-        clEnumValN(OptLevel::O2, "2", "Standard optimization"),
-        clEnumValN(OptLevel::O3, "3", "Aggressive optimization (default)")));
-
 inline cl::opt<std::string> targetCPU(
     "mcpu",
     cl::desc("Target CPU"),
@@ -79,7 +61,6 @@ inline cl::opt<std::string> outputFile(
 
 struct BackendConfig {
     CompileMode mode = CompileMode::DumpLLVMIR;
-    OptLevel optLevelVal = OptLevel::O3;
     std::string targetCPUVal;
     std::string targetFeaturesVal;
     std::string outputFileVal;
@@ -99,7 +80,6 @@ struct BackendConfig {
 inline BackendConfig BackendConfig::fromCommandLine(llvm::StringRef inputFile) {
     BackendConfig config;
     config.mode = CompileMode::FullCompile;
-    config.optLevelVal = optLevel.getValue();
     config.targetCPUVal = targetCPU.getValue();
     config.targetFeaturesVal = targetFeatures.getValue();
     
