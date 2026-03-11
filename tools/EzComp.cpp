@@ -46,6 +46,7 @@
 #include "IRGen/MLIRGen.h"
 #include "Transforms/LowerPipelines.h"
 #include "Transforms/LowerPasses.h"
+#include "Transforms/OptPasses.h"
 #include "Transforms/OptPipelines.h"
 #include "Driver/BackendDriver.h"
 #include "Driver/BackendOptions.h"
@@ -154,6 +155,10 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 	if (opt.enableLowerToBase.getValue() || opt.enableToLLVM.getValue()) {
 	    LowerToBase(pm);
 	}
+
+    if (opt.enableHoistBoundary.getValue()) {
+        HoistBoundary(pm);
+    }
 
 	//===--------------------------------------------------------------------===//
 	// 阶段2：Affine → SCF
@@ -289,6 +294,7 @@ static int dumpLLVMIR() {
         opt.enableAffineToSCF = true;
         opt.enableSCFToCF = true;
         opt.enableToLLVM = true;
+        opt.enableHoistBoundary=true;
         buildPipeline(pm, opt);
     }
 
@@ -351,6 +357,7 @@ static int compile() {
         opt.enableAffineToSCF = true;
         opt.enableSCFToCF = true;
         opt.enableToLLVM = true;
+        opt.enableHoistBoundary=true;
         buildPipeline(pm, opt);
     }
 
@@ -374,7 +381,8 @@ int main(int argc, char **argv) {
     // Register any command line options.
     mlir::registerAsmPrinterCLOptions();
     mlir::registerMLIRContextCLOptions();
-    registerPasses();
+    registerLowerPasses();
+    registerOptPasses();
     registerPipelines();
     cl::ParseCommandLineOptions(argc, argv, "comp compiler\n");
 

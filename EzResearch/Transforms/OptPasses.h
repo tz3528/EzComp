@@ -1,4 +1,4 @@
-//===-- OptPipelines.cpp -------------------------------------- -*- C++ -*-===//
+//===-- OptPasses.h ------------------------------------------- -*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,14 +11,17 @@
 //===----------------------------------------------------------------------===//
 
 
-#include "Transforms/OptPipelines.h"
+#ifndef EZ_RESEARCH_OPT_PASSES_H
+#define EZ_RESEARCH_OPT_PASSES_H
 
 namespace ezresearch {
 
-void HoistBoundary(mlir::OpPassManager &pm) {
-    pm.addPass(createOptBoundaryHoistPass());
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(mlir::createCSEPass());
+void registerOptBoundaryHoistPass();
+
+inline void registerOptPasses() {
+    registerOptBoundaryHoistPass();
 }
 
 }
+
+#endif //EZ_RESEARCH_OPT_PASSES_H

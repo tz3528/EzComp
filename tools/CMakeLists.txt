@@ -20,6 +20,7 @@ target_link_libraries(ezcomp PRIVATE
         Frontend
         Midend
         Backend
+        EzResearch
 
         # --- 其他 MLIR 基础库 ---
         MLIROptLib

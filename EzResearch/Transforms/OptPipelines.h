@@ -29,8 +29,16 @@
 namespace ezresearch {
 
 struct OptimizationOptions : mlir::PassPipelineOptions<OptimizationOptions> {
+    Option<bool> enableHoistBoundary{
+        *this, "hoist-boundary",
+        llvm::cl::desc("Hoest boundary equation to the outside of time loop"),
+        llvm::cl::init(false)};
 
 };
+
+std::unique_ptr<mlir::Pass> createOptBoundaryHoistPass();
+
+void HoistBoundary(mlir::OpPassManager &pm);
 
 }
 
