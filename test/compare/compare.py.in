@@ -8,7 +8,7 @@
 
 """
 比较测试结果脚本
-1. 编译 reference.cpp (可选，支持 O0/O1/O2/O3 四种优化级别)
+1. 编译 reference.cpp (支持 O1/O2/O3 三种优化级别)
 2. 运行 ezcomp 编译 .comp 文件
 3. 比较运行生成的 result.h5 与预期结果
 """
@@ -31,7 +31,7 @@ HDF5_LIBS = "@EZCOMPUTE_HDF5_LIBS@"
 HDF5_INCLUDE_DIRS = "@HDF5_INCLUDE_DIRS@"
 
 # 优化级别
-OPT_LEVELS = ["O0", "O1", "O2", "O3"]
+OPT_LEVELS = ["O1", "O2", "O3"]
 
 
 def find_comp_file(test_dir):
@@ -76,7 +76,7 @@ def compile_reference(compiler, ref_cpp, output_dir, opt_level, hdf5_libs, hdf5_
         compiler: C++ 编译器路径
         ref_cpp: reference.cpp 源文件路径
         output_dir: 输出目录
-        opt_level: 优化级别 (O0, O1, O2, O3)
+        opt_level: 优化级别 (O1, O2, O3)
         hdf5_libs: HDF5 库路径列表
         hdf5_include_dirs: HDF5 头文件目录列表
 
@@ -128,23 +128,32 @@ def compile_reference(compiler, ref_cpp, output_dir, opt_level, hdf5_libs, hdf5_
 
 def parse_timer_output(stderr_text):
     """
-    解析 reference 程序输出的计时信息
+    解析程序输出的计时信息
 
     Args:
         stderr_text: stderr 输出文本
 
     Returns:
         dict: 计时信息字典，如 {"计算用时": "0h 0m 0s 15ms", ...}
+              无标签格式时使用 "default" 作为 key
     """
     times = {}
-    # 匹配格式: [TIMER] [tag] label: Xh Xm Xs Xms
-    pattern = r'\[TIMER\](?:\s+\[([^\]]+)\])?\s+([^:]+):\s+(\d+)h\s+(\d+)m\s+(\d+)s\s+(\d+)ms'
-    
-    for match in re.finditer(pattern, stderr_text):
+    # 匹配有标签格式: [TIMER] [tag] label: Xh Xm Xs Xms
+    labeled_pattern = r'\[TIMER\](?:\s+\[([^\]]+)\])?\s+([^:]+):\s+(\d+)h\s+(\d+)m\s+(\d+)s\s+(\d+)ms'
+
+    for match in re.finditer(labeled_pattern, stderr_text):
         tag, label, hours, minutes, seconds, ms = match.groups()
         time_str = f"{hours}h {minutes}m {seconds}s {ms}ms"
         times[label.strip()] = time_str
-    
+
+    # 匹配无标签格式: [TIMER] Xh Xm Xs Xms
+    if not times:
+        simple_pattern = r'\[TIMER\]\s+(\d+)h\s+(\d+)m\s+(\d+)s\s+(\d+)ms'
+        match = re.search(simple_pattern, stderr_text)
+        if match:
+            hours, minutes, seconds, ms = match.groups()
+            times['default'] = f"{hours}h {minutes}m {seconds}s {ms}ms"
+
     return times
 
 
@@ -205,25 +214,6 @@ def run_reference(executable, output_file, tag):
     except Exception as e:
         print(f"运行时出错: {str(e)}")
         return False, {}
-
-
-def parse_ezcomp_time(stderr_text):
-    """
-    解析 ezcomp 程序输出的计时信息
-
-    Args:
-        stderr_text: stderr 输出文本
-
-    Returns:
-        float: 运行时间（秒），如果解析失败返回 None
-    """
-    # 匹配格式: [TIMER] Xh Xm Xs Xms (无标签格式)
-    pattern = r'\[TIMER\]\s+(\d+)h\s+(\d+)m\s+(\d+)s\s+(\d+)ms'
-    match = re.search(pattern, stderr_text)
-    if match:
-        hours, minutes, seconds, ms = map(int, match.groups())
-        return hours * 3600 + minutes * 60 + seconds + ms / 1000.0
-    return None
 
 
 def run_ezcomp(ezcomp_path, comp_file, working_dir, test_name):
@@ -302,8 +292,10 @@ def run_ezcomp(ezcomp_path, comp_file, working_dir, test_name):
             return False, result.returncode, None
 
         # 解析运行时间
-        run_time = parse_ezcomp_time(result.stderr)
-        
+        times = parse_timer_output(result.stderr)
+        time_str = times.get('计算用时') or times.get('default')
+        run_time = parse_time_to_seconds(time_str)
+
         print("程序运行成功")
         return True, 0, run_time
 
@@ -313,112 +305,6 @@ def run_ezcomp(ezcomp_path, comp_file, working_dir, test_name):
     except Exception as e:
         print(f"运行程序时出错: {str(e)}")
         return False, -1, None
-
-
-def compare_datasets(actual_file, expected_file, rtol=1e-5, atol=1e-8):
-    """
-    比较两个 HDF5 文件的内容
-
-    Args:
-        actual_file: 实际输出文件路径
-        expected_file: 预期输出文件路径
-        rtol: 相对容差
-        atol: 绝对容差
-
-    Returns:
-        (success, messages): 是否成功，以及比较信息列表
-    """
-    messages = []
-
-    if not os.path.exists(actual_file):
-        return False, [f"实际输出文件不存在: {actual_file}"]
-
-    if not os.path.exists(expected_file):
-        return False, [f"预期输出文件不存在: {expected_file}"]
-
-    try:
-        with h5py.File(actual_file, 'r') as f_actual, \
-             h5py.File(expected_file, 'r') as f_expected:
-
-            # 检查数据集
-            actual_keys = set(f_actual.keys())
-            expected_keys = set(f_expected.keys())
-
-            if actual_keys != expected_keys:
-                missing_in_actual = expected_keys - actual_keys
-                missing_in_expected = actual_keys - expected_keys
-                if missing_in_actual:
-                    messages.append(f"实际输出缺少数据集: {missing_in_actual}")
-                if missing_in_expected:
-                    messages.append(f"预期输出缺少数据集: {missing_in_expected}")
-                return False, messages
-
-            # 比较 result 数据集
-            if 'result' in actual_keys:
-                actual_data = f_actual['result'][:]
-                expected_data = f_expected['result'][:]
-
-                if actual_data.shape != expected_data.shape:
-                    messages.append(f"result 形状不匹配: {actual_data.shape} vs {expected_data.shape}")
-                    return False, messages
-
-                if not np.allclose(actual_data, expected_data, rtol=rtol, atol=atol):
-                    diff = np.abs(actual_data - expected_data)
-                    max_diff = np.max(diff)
-                    max_rel_diff = np.max(diff / (np.abs(expected_data) + 1e-10))
-                    messages.append(f"result 数据不匹配:")
-                    messages.append(f"  最大绝对误差: {max_diff:.6e}")
-                    messages.append(f"  最大相对误差: {max_rel_diff:.6e}")
-                    return False, messages
-
-                messages.append(f"result 数据集比较通过 (shape={actual_data.shape})")
-
-            # 比较坐标数据集
-            for key in actual_keys:
-                if key.startswith('coord_'):
-                    actual_coords = f_actual[key][:]
-                    expected_coords = f_expected[key][:]
-
-                    if not np.allclose(actual_coords, expected_coords, rtol=rtol, atol=atol):
-                        messages.append(f"{key} 坐标不匹配")
-                        return False, messages
-                    messages.append(f"{key} 坐标比较通过")
-
-            return True, messages
-
-    except Exception as e:
-        return False, [f"比较过程出错: {str(e)}"]
-
-
-def print_comparison_table(results):
-    """
-    打印比较结果表格
-
-    Args:
-        results: 结果列表，每个元素为 (opt_level, compute_time, output_time, match)
-    """
-    # 计算列宽
-    opt_width = max(len("优化级别"), max(len(r[0]) for r in results))
-    compute_width = max(len("计算用时"), max(len(r[1]) if r[1] else 3 for r in results))
-    output_width = max(len("输出用时"), max(len(r[2]) if r[2] else 3 for r in results))
-    match_width = len("是否匹配")
-
-    # 表头
-    header = f"┌─{'─' * opt_width}─┬─{'─' * compute_width}─┬─{'─' * output_width}─┬─{'─' * match_width}─┐"
-    separator = f"├─{'─' * opt_width}─┼─{'─' * compute_width}─┼─{'─' * output_width}─┼─{'─' * match_width}─┤"
-    footer = f"└─{'─' * opt_width}─┴─{'─' * compute_width}─┴─{'─' * output_width}─┴─{'─' * match_width}─┘"
-
-    print(header)
-    print(f"│ {'优化级别'.ljust(opt_width)} │ {'计算用时'.ljust(compute_width)} │ {'输出用时'.ljust(output_width)} │ {'是否匹配'.ljust(match_width)} │")
-    print(separator)
-
-    for opt, compute, output, match in results:
-        compute_str = compute if compute else "N/A"
-        output_str = output if output else "N/A"
-        match_str = "✓" if match else "✗"
-        print(f"│ {opt.ljust(opt_width)} │ {compute_str.ljust(compute_width)} │ {output_str.ljust(output_width)} │ {match_str.ljust(match_width)} │")
-
-    print(footer)
 
 
 def verify_results(all_data, rtol=1e-6):
@@ -462,8 +348,6 @@ def verify_results(all_data, rtol=1e-6):
     # 检查 NaN 和 Inf
     ezcomp_nan_count = np.sum(np.isnan(ezcomp_result))
     ezcomp_inf_count = np.sum(np.isinf(ezcomp_result))
-    ref_nan_count = np.sum(np.isnan(ref_result))
-    ref_inf_count = np.sum(np.isinf(ref_result))
     
     if ezcomp_nan_count > 0:
         errors.append(f"ezcomp 结果包含 {ezcomp_nan_count} 个 NaN 值")
@@ -582,7 +466,6 @@ def main():
     parser.add_argument('test_dir', nargs='?', default=os.environ.get('COMPARE_TEST_DIR', ''),
                         help='测试目录名 (也可通过环境变量 COMPARE_TEST_DIR 设置)')
     parser.add_argument('--rtol', type=float, default=1e-6, help='相对容差 (默认: 1e-6)')
-    parser.add_argument('--atol', type=float, default=1e-8, help='绝对容差')
     parser.add_argument('--no-plot', action='store_true', help='不生成性能比较图')
 
     args = parser.parse_args()
