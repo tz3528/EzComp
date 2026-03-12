@@ -29,6 +29,7 @@
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
@@ -158,6 +159,10 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 
     if (opt.enableHoistBoundary.getValue()) {
         HoistBoundary(pm);
+    }
+
+    if (opt.enableAffineVevtorize.getValue()) {
+        AffineVectorize(pm);
     }
 
 	//===--------------------------------------------------------------------===//

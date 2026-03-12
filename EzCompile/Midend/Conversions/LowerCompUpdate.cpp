@@ -122,7 +122,11 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 
 		// 降级 sample
 		mlir::SmallVector<mlir::Value, 8> indices;
-		auto time_var = modIndex(rewriter, loc, op.getAtTime(), 2);
+		// 创建 affine map: (d0) -> (d0 mod 2)
+		mlir::AffineMap mod2Map = mlir::AffineMap::get(
+			/*dimCount=*/1, /*symbolCount=*/0, rewriter.getAffineDimExpr(0) % 2);
+		mlir::Value time_var = mlir::affine::AffineApplyOp::create(
+			rewriter, loc, mod2Map, mlir::ValueRange{op.getAtTime()});
 		indices.emplace_back(time_var);
 		for (auto arg : argValues) {
 			indices.push_back(arg);
@@ -142,13 +146,14 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 
 		mlir::Value yieldedF64 = castToF64(rewriter, yieldOp.getLoc(), yieldOp.getOperand(0));
 
-		// 修改时间索引为 (atTime + 1) % 2
-		mlir::Value one = constIndex(rewriter, loc, 1);
-		mlir::Value atTimePlusOne = mlir::arith::AddIOp::create(rewriter, loc, op.getAtTime(), one);
-		mlir::Value storeTimeVar = modIndex(rewriter, loc, atTimePlusOne, 2);
+		// 创建 affine map: (d0) -> ((d0 + 1) mod 2)
+		mlir::AffineMap mod2PlusOneMap = mlir::AffineMap::get(
+			/*dimCount=*/1, /*symbolCount=*/0, (rewriter.getAffineDimExpr(0) + 1) % 2);
+		mlir::Value storeTimeVar = mlir::affine::AffineApplyOp::create(
+			rewriter, loc, mod2PlusOneMap, mlir::ValueRange{op.getAtTime()});
 		indices[0] = storeTimeVar;
 
-		mlir::memref::StoreOp::create(rewriter, yieldOp.getLoc(), yieldedF64, memref, indices);
+		mlir::affine::AffineStoreOp::create(rewriter, yieldOp.getLoc(), yieldedF64, memref, indices);
 		rewriter.eraseOp(yieldOp);
 
 		rewriter.eraseOp(op);

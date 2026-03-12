@@ -34,11 +34,17 @@ struct OptimizationOptions : mlir::PassPipelineOptions<OptimizationOptions> {
         llvm::cl::desc("Hoest boundary equation to the outside of time loop"),
         llvm::cl::init(false)};
 
+    Option<bool> enableAffineVevtorize{
+        *this, "affine-vectorize",
+        llvm::cl::desc("Vectorize the Affine loop"),
+        llvm::cl::init(false)};
+
 };
 
 std::unique_ptr<mlir::Pass> createOptBoundaryHoistPass();
 
 void HoistBoundary(mlir::OpPassManager &pm);
+void AffineVectorize(mlir::OpPassManager &pm);
 
 }
 
