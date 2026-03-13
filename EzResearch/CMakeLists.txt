@@ -27,10 +27,14 @@ target_link_libraries(EzResearch PUBLIC
         MLIRControlFlowDialect
         MLIRFuncDialect
         MLIRLLVMDialect
+        MLIRVectorDialect
         # 转换支持
         MLIRAffineToStandard
         MLIRSCFToControlFlow
         MLIRConvertToLLVMPass
+        MLIRVectorToLLVM
+        MLIRVectorToLLVMPass
+        MLIRVectorToSCF
 )
 
 # 4. 收集头文件

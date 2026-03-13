@@ -21,6 +21,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
@@ -38,6 +39,7 @@
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/AsmState.h"
 
@@ -60,6 +62,7 @@ using namespace ezresearch;
 static void registerNeededExtensions(mlir::DialectRegistry &registry) {
     // LLVM 转换扩展
     mlir::arith::registerConvertArithToLLVMInterface(registry);
+    mlir::registerConvertComplexToLLVMInterface(registry);
     mlir::cf::registerConvertControlFlowToLLVMInterface(registry);
     mlir::registerConvertFuncToLLVMInterface(registry);
     mlir::registerConvertMathToLLVMInterface(registry);
@@ -155,15 +158,15 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
     //===--------------------------------------------------------------------===//
 	if (opt.enableLowerToBase.getValue() || opt.enableToLLVM.getValue()) {
 	    LowerToBase(pm);
+	    if (opt.enableHoistBoundary.getValue()) {
+	        HoistBoundary(pm);
+	    }
+
+	    if (opt.enableAffineVevtorize.getValue()) {
+	        AffineVectorize(pm);
+	        LoopPeeling(pm);
+	    }
 	}
-
-    if (opt.enableHoistBoundary.getValue()) {
-        HoistBoundary(pm);
-    }
-
-    if (opt.enableAffineVevtorize.getValue()) {
-        AffineVectorize(pm);
-    }
 
 	//===--------------------------------------------------------------------===//
 	// 阶段2：Affine → SCF
@@ -183,6 +186,9 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 	// 阶段4：基础方言 → LLVM
 	//===--------------------------------------------------------------------===//
 	if (opt.enableToLLVM.getValue()) {
+	    if (opt.enableAffineVevtorize.getValue()) {
+	        pm.addPass(mlir::createConvertVectorToLLVMPass());
+	    }
 	    ToLLVM(pm);
 	}
 }
@@ -300,6 +306,7 @@ static int dumpLLVMIR() {
         opt.enableSCFToCF = true;
         opt.enableToLLVM = true;
         opt.enableHoistBoundary=true;
+        opt.enableAffineVevtorize=true;
         buildPipeline(pm, opt);
     }
 
@@ -345,6 +352,9 @@ static int compile() {
 
     mlir::PassManager pm(&context);
 
+    // 向量化标志，用于决定是否启用 AVX
+    bool useVectorize = false;
+
     // 如果用户指定了 passPipeline，使用用户的配置；否则使用默认的完整 pipeline
     if (passPipeline.hasAnyOccurrences()) {
         auto errHandler = [&](const llvm::Twine &msg) -> mlir::LogicalResult {
@@ -363,6 +373,8 @@ static int compile() {
         opt.enableSCFToCF = true;
         opt.enableToLLVM = true;
         opt.enableHoistBoundary=true;
+        opt.enableAffineVevtorize=true;
+        useVectorize = true;  // 默认启用向量化
         buildPipeline(pm, opt);
     }
 
@@ -373,7 +385,14 @@ static int compile() {
     }
 
     // FullCompile 模式：使用命令行选项进行完整编译
-    Backend backend(backend::BackendConfig::fromCommandLine(inputFilename));
+    backend::BackendConfig config = backend::BackendConfig::fromCommandLine(inputFilename);
+
+    // 如果启用了向量化且用户未手动指定 CPU 特性，自动启用 AVX2
+    if (useVectorize && config.targetFeaturesVal.empty()) {
+        config.targetFeaturesVal = "+avx2";
+    }
+
+    Backend backend(config);
 
     if (mlir::failed(backend.run(*mo))) {
         return 4;

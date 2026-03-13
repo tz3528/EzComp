@@ -33,6 +33,7 @@ target_link_libraries(ezcomp PRIVATE
         # --- 方言库 ---
         MLIRAffineDialect
         MLIRArithDialect
+        MLIRComplexDialect
         MLIRControlFlowDialect
         MLIRFuncDialect
         MLIRFuncInlinerExtension
@@ -46,11 +47,13 @@ target_link_libraries(ezcomp PRIVATE
         # --- 转换库 ---
         MLIRAffineToStandard
         MLIRArithToLLVM
+        MLIRComplexToLLVM
         MLIRControlFlowToLLVM
         MLIRConvertToLLVMPass
         MLIRFuncToLLVM
         MLIRMathToLLVM
         MLIRMemRefToLLVM
+        MLIRReconcileUnrealizedCasts
         MLIRSCFToControlFlow
         MLIRUBToLLVM
         MLIRVectorToLLVM

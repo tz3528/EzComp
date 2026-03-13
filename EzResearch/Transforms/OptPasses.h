@@ -17,9 +17,11 @@
 namespace ezresearch {
 
 void registerOptBoundaryHoistPass();
+void registerOptLoopPeelingPass();
 
 inline void registerOptPasses() {
     registerOptBoundaryHoistPass();
+    registerOptLoopPeelingPass();
 }
 
 }

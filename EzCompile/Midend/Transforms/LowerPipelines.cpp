@@ -49,11 +49,13 @@ void AffineToSCF(mlir::OpPassManager &pm) {
 void SCFToCF(mlir::OpPassManager &pm) {
     pm.addPass(mlir::createSCFToControlFlowPass());
     pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
 }
 
 void ToLLVM(mlir::OpPassManager &pm) {
     pm.addPass(mlir::createConvertToLLVMPass());
     pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
 }
 
 } // namespace ezcompile
