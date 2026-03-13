@@ -100,6 +100,9 @@ static cl::opt<enum Action> emitAction(
 static mlir::PassPipelineCLParser passPipeline("",
     "Run an MLIR pass pipeline (use --pass-pipeline=...)");
 
+// 全局变量：记录是否启用了向量化（用于决定是否启用 AVX）
+static bool useVectorize = false;
+
 /// Returns a Toy AST resulting from parsing the file or a nullptr on error.
 static std::unique_ptr<ParsedModule> parseInputFile(llvm::StringRef filename) {
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> fileOrErr =
@@ -153,6 +156,9 @@ static void LoadDialect(mlir::MLIRContext &context) {
 struct PipelineOptions : LoweringOptions, OptimizationOptions {};
 
 void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
+    // 根据选项设置全局向量化标志（用于后续决定是否启用 AVX）
+    useVectorize = opt.enableAffineVevtorize.getValue();
+
     //===--------------------------------------------------------------------===//
     // 阶段1：Comp → Base
     //===--------------------------------------------------------------------===//
@@ -352,8 +358,8 @@ static int compile() {
 
     mlir::PassManager pm(&context);
 
-    // 向量化标志，用于决定是否启用 AVX
-    bool useVectorize = false;
+    // 重置全局向量化标志，buildPipeline 会根据选项设置它
+    useVectorize = false;
 
     // 如果用户指定了 passPipeline，使用用户的配置；否则使用默认的完整 pipeline
     if (passPipeline.hasAnyOccurrences()) {
@@ -372,9 +378,8 @@ static int compile() {
         opt.enableAffineToSCF = true;
         opt.enableSCFToCF = true;
         opt.enableToLLVM = true;
-        opt.enableHoistBoundary=true;
-        opt.enableAffineVevtorize=true;
-        useVectorize = true;  // 默认启用向量化
+        opt.enableHoistBoundary = true;
+        opt.enableAffineVevtorize = true;
         buildPipeline(pm, opt);
     }
 
