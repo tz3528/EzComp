@@ -43,7 +43,10 @@ void LowerToBase(mlir::OpPassManager &pm) {
 
 void AffineToSCF(mlir::OpPassManager &pm) {
     pm.addPass(mlir::createLowerAffinePass());
-    pm.addPass(mlir::createCanonicalizerPass());
+    auto &fpm = pm.nest<mlir::func::FuncOp>();
+    fpm.addPass(mlir::createLoopInvariantCodeMotionPass());
+    fpm.addPass(mlir::createCanonicalizerPass());
+    fpm.addPass(mlir::createCSEPass());
 }
 
 void SCFToCF(mlir::OpPassManager &pm) {
