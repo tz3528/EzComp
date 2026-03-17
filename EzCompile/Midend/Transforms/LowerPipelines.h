@@ -1,4 +1,4 @@
-//===-- Pipelines.h --------------------------------------------*- C++ -*-===//
+//===-- LowerPipelines.h ---------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,13 +12,14 @@
 //===----------------------------------------------------------------------===//
 
 
-#ifndef EZ_COMPILE_PIPELINES_H
-#define EZ_COMPILE_PIPELINES_H
+#ifndef EZ_COMPILE_LOWER_PIPELINES_H
+#define EZ_COMPILE_LOWER_PIPELINES_H
 
 #include "llvm/Support/CommandLine.h"
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -30,7 +31,7 @@
 namespace ezcompile {
 
 /// Pipeline 选项，控制四阶段降级流程
-struct PipelineOptions : mlir::PassPipelineOptions<PipelineOptions> {
+struct LoweringOptions : mlir::PassPipelineOptions<LoweringOptions> {
 
 	/// Comp 方言 → 基础方言 (Affine/Arith/MemRef)
 	Option<bool> enableLowerToBase{
@@ -58,10 +59,6 @@ struct PipelineOptions : mlir::PassPipelineOptions<PipelineOptions> {
 
 };
 
-void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt);
-
-void registerPipelines();
-
 //===----------------------------------------------------------------------===//
 // Pass
 //===----------------------------------------------------------------------===//
@@ -78,6 +75,11 @@ std::unique_ptr<mlir::Pass> createLowerCompProblemPass();
 std::unique_ptr<mlir::Pass> createLowerCompCallPass();
 std::unique_ptr<mlir::Pass> createLowerCompDeltaPass();
 
+void LowerToBase(mlir::OpPassManager &pm);
+void AffineToSCF(mlir::OpPassManager &pm);
+void SCFToCF(mlir::OpPassManager &pm);
+void ToLLVM(mlir::OpPassManager &pm);
+
 } // namespace ezcompile
 
-#endif //EZ_COMPILE_PIPELINES_H
+#endif //EZ_COMPILE_LOWER_PIPELINES_H

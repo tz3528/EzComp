@@ -15,6 +15,7 @@
 #ifndef EZ_COMPILE_LOWER_UTIL_H
 #define EZ_COMPILE_LOWER_UTIL_H
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 
 #include "BuilderUtil.h"
@@ -105,13 +106,16 @@ inline mlir::Value lowerSample(mlir::OpBuilder& b, mlir::Location loc,
         if (shiftVal == 0) {
             accessIndices.push_back(iv);
         } else {
-            mlir::Value cShift = b.create<mlir::arith::ConstantIndexOp>(loc, shiftVal);
-            mlir::Value shiftedIv = b.create<mlir::arith::AddIOp>(loc, iv, cShift);
-            accessIndices.push_back(shiftedIv);
+        	// 使用 affine map: (d0) -> (d0 + shift)
+        	mlir::AffineMap shiftMap = mlir::AffineMap::get(
+				1, 0, b.getAffineDimExpr(0) + shiftVal);
+        	mlir::Value shiftedIv = mlir::affine::AffineApplyOp::create(
+				b, loc, shiftMap, mlir::ValueRange{iv});
+        	accessIndices.push_back(shiftedIv);
         }
     }
 
-    return b.create<mlir::memref::LoadOp>(loc, memref, accessIndices);
+    return b.create<mlir::affine::AffineLoadOp>(loc, memref, accessIndices);
 }
 
 } // namespace ezcompile

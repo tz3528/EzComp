@@ -21,6 +21,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/ConvertToLLVM/ToLLVMPass.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
@@ -29,6 +30,7 @@
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
@@ -37,6 +39,7 @@
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/AsmState.h"
 
@@ -44,18 +47,22 @@
 #include "EzCompile/Frontend/include/AST.h"
 #include "EzCompile/Frontend/include/Semantic/Semantic.h"
 #include "IRGen/MLIRGen.h"
-#include "Transforms/Pipelines.h"
-#include "Transforms/Passes.h"
+#include "Transforms/LowerPipelines.h"
+#include "Transforms/LowerPasses.h"
+#include "Transforms/OptPasses.h"
+#include "Transforms/OptPipelines.h"
 #include "Driver/BackendDriver.h"
 #include "Driver/BackendOptions.h"
 
 namespace cl = llvm::cl;
 using namespace ezcompile;
+using namespace ezresearch;
 
 /// 仅注册项目需要的 LLVM 转换扩展，避免链接不需要的库
 static void registerNeededExtensions(mlir::DialectRegistry &registry) {
     // LLVM 转换扩展
     mlir::arith::registerConvertArithToLLVMInterface(registry);
+    mlir::registerConvertComplexToLLVMInterface(registry);
     mlir::cf::registerConvertControlFlowToLLVMInterface(registry);
     mlir::registerConvertFuncToLLVMInterface(registry);
     mlir::registerConvertMathToLLVMInterface(registry);
@@ -92,6 +99,9 @@ static cl::opt<enum Action> emitAction(
 
 static mlir::PassPipelineCLParser passPipeline("",
     "Run an MLIR pass pipeline (use --pass-pipeline=...)");
+
+// 全局变量：记录是否启用了向量化（用于决定是否启用 AVX）
+static bool useVectorize = false;
 
 /// Returns a Toy AST resulting from parsing the file or a nullptr on error.
 static std::unique_ptr<ParsedModule> parseInputFile(llvm::StringRef filename) {
@@ -141,6 +151,63 @@ static void LoadDialect(mlir::MLIRContext &context) {
     context.getOrLoadDialect<mlir::func::FuncDialect>();
     context.getOrLoadDialect<mlir::LLVM::LLVMDialect>();
     context.getOrLoadDialect<mlir::ub::UBDialect>();
+}
+
+struct PipelineOptions : LoweringOptions, OptimizationOptions {};
+
+void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
+    // 根据选项设置全局向量化标志（用于后续决定是否启用 AVX）
+    useVectorize = opt.enableAffineVevtorize.getValue();
+
+    //===--------------------------------------------------------------------===//
+    // 阶段1：Comp → Base
+    //===--------------------------------------------------------------------===//
+	if (opt.enableLowerToBase.getValue() || opt.enableToLLVM.getValue()) {
+	    LowerToBase(pm);
+	    if (opt.enableHoistBoundary.getValue()) {
+	        HoistBoundary(pm);
+	    }
+
+	    if (opt.enableLoopTiling.getValue()) {
+	        LoopTiling(pm);
+	    }
+
+	    if (opt.enableAffineVevtorize.getValue()) {
+	        AffineVectorize(pm);
+	        LoopPeeling(pm);
+	    }
+	}
+
+	//===--------------------------------------------------------------------===//
+	// 阶段2：Affine → SCF
+	//===--------------------------------------------------------------------===//
+	if (opt.enableAffineToSCF.getValue() || opt.enableToLLVM.getValue()) {
+	    AffineToSCF(pm);
+	}
+
+	//===--------------------------------------------------------------------===//
+	// 阶段3：SCF → ControlFlow
+	//===--------------------------------------------------------------------===//
+	if (opt.enableSCFToCF.getValue() || opt.enableToLLVM.getValue()) {
+	    SCFToCF(pm);
+	}
+
+	//===--------------------------------------------------------------------===//
+	// 阶段4：基础方言 → LLVM
+	//===--------------------------------------------------------------------===//
+	if (opt.enableToLLVM.getValue()) {
+	    if (opt.enableAffineVevtorize.getValue()) {
+	        pm.addPass(mlir::createConvertVectorToLLVMPass());
+	    }
+	    ToLLVM(pm);
+	}
+}
+
+void registerPipelines() {
+	mlir::PassPipelineRegistration<PipelineOptions>(
+		"lowering",
+		"Lower Comp dialect via staged lowering with configurable options",
+		buildPipeline);
 }
 
 static int dumpAST() {
@@ -248,6 +315,8 @@ static int dumpLLVMIR() {
         opt.enableAffineToSCF = true;
         opt.enableSCFToCF = true;
         opt.enableToLLVM = true;
+        opt.enableHoistBoundary=true;
+        opt.enableAffineVevtorize=true;
         buildPipeline(pm, opt);
     }
 
@@ -278,6 +347,7 @@ static int compile() {
         return 1;
     }
 
+
     mlir::DialectRegistry registry;
     registerNeededExtensions(registry);
     mlir::MLIRContext context(registry);
@@ -291,6 +361,9 @@ static int compile() {
     }
 
     mlir::PassManager pm(&context);
+
+    // 重置全局向量化标志，buildPipeline 会根据选项设置它
+    useVectorize = false;
 
     // 如果用户指定了 passPipeline，使用用户的配置；否则使用默认的完整 pipeline
     if (passPipeline.hasAnyOccurrences()) {
@@ -309,6 +382,8 @@ static int compile() {
         opt.enableAffineToSCF = true;
         opt.enableSCFToCF = true;
         opt.enableToLLVM = true;
+        opt.enableHoistBoundary = true;
+        opt.enableAffineVevtorize = true;
         buildPipeline(pm, opt);
     }
 
@@ -319,7 +394,14 @@ static int compile() {
     }
 
     // FullCompile 模式：使用命令行选项进行完整编译
-    Backend backend(backend::BackendConfig::fromCommandLine(inputFilename));
+    backend::BackendConfig config = backend::BackendConfig::fromCommandLine(inputFilename);
+
+    // 如果启用了向量化且用户未手动指定 CPU 特性，自动启用 AVX2
+    if (useVectorize && config.targetFeaturesVal.empty()) {
+        config.targetFeaturesVal = "+avx2";
+    }
+
+    Backend backend(config);
 
     if (mlir::failed(backend.run(*mo))) {
         return 4;
@@ -332,7 +414,8 @@ int main(int argc, char **argv) {
     // Register any command line options.
     mlir::registerAsmPrinterCLOptions();
     mlir::registerMLIRContextCLOptions();
-    registerPasses();
+    registerLowerPasses();
+    registerOptPasses();
     registerPipelines();
     cl::ParseCommandLineOptions(argc, argv, "comp compiler\n");
 

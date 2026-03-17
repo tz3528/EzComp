@@ -13,14 +13,14 @@
 #include <hdf5.h>
 
 // 网格参数
-constexpr int NX = 501;     // x 方向点数
-constexpr int NY = 501;     // y 方向点数
+constexpr int NX = 2001;     // x 方向点数
+constexpr int NY = 2001;     // y 方向点数
 constexpr int NT = 4000;    // 时间步数
 
 constexpr double X_LOWER = 0.0;
-constexpr double X_UPPER = 500.0;
+constexpr double X_UPPER = 2000.0;
 constexpr double Y_LOWER = 0.0;
-constexpr double Y_UPPER = 500.0;
+constexpr double Y_UPPER = 2000.0;
 
 constexpr double ALPHA = 0.5;  // 热扩散系数
 
@@ -118,7 +118,7 @@ int main(int argc, char* argv[]) {
 
     double dx = (X_UPPER - X_LOWER) / (NX - 1);
     double dy = (Y_UPPER - Y_LOWER) / (NY - 1);
-    double dt = 0.25;
+    double dt = 0.5;
 
     for (int i = 0; i < NX; ++i) {
         coord_x[i] = X_LOWER + i * dx;
@@ -142,7 +142,7 @@ int main(int argc, char* argv[]) {
         for (int j = 0; j < NY; ++j) {
             u_curr[0 * NY + j] = 100.0;
         }
-        // u(50, y, t) = 0 (右边界)
+        // u(2000, y, t) = 0 (右边界)
         for (int j = 0; j < NY; ++j) {
             u_curr[(NX - 1) * NY + j] = 0.0;
         }
@@ -150,7 +150,7 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < NX; ++i) {
             u_curr[i * NY + 0] = 100.0;
         }
-        // u(x, 50, t) = 0 (上边界)
+        // u(x, 2000, t) = 0 (上边界)
         for (int i = 0; i < NX; ++i) {
             u_curr[i * NY + (NY - 1)] = 0.0;
         }

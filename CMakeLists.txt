@@ -34,6 +34,8 @@ include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 # 让项目内的代码可以互相引用 (比如 #include "EzCompile/...")
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+# 让 EzResearch 模块可以用 #include "Transforms/..." 引入
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/EzResearch)
 # 让项目可以引用编译生成的中间文件 (比如 TableGen 生成的 .inc 文件)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
@@ -41,6 +43,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 # 6. 添加子目录
 # ---------------------------------------------------------------------------
 add_subdirectory(EzCompile)
+add_subdirectory(EzResearch)
 add_subdirectory(EzCompute)
 add_subdirectory(tools)
 
