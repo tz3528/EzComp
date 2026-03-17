@@ -37,11 +37,24 @@ target_link_libraries(EzResearch PUBLIC
         MLIRVectorToSCF
 )
 
-# 4. 收集头文件
+# 4. Linux 平台链接 hwloc 库（用于 CacheUtil.h 检测缓存信息）
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_path(HWLOC_INCLUDE_DIR NAMES hwloc.h)
+    find_library(HWLOC_LIBRARY NAMES hwloc)
+    if(HWLOC_INCLUDE_DIR AND HWLOC_LIBRARY)
+        target_include_directories(EzResearch PRIVATE ${HWLOC_INCLUDE_DIR})
+        target_link_libraries(EzResearch PRIVATE ${HWLOC_LIBRARY})
+    else()
+        message(FATAL_ERROR "hwloc library not found. Please install libhwloc-dev.")
+    endif()
+endif()
+
+# 5. 收集头文件
 target_include_directories(EzResearch PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 # 5. 添加子模块
 add_subdirectory(Generic)
+add_subdirectory(Tiling)
 add_subdirectory(Transforms)

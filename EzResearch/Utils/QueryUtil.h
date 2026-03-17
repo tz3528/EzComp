@@ -11,8 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 
-#ifndef BUILD_QUERYUTIL_H
-#define BUILD_QUERYUTIL_H
+#ifndef EZ_RESEARCH_QUERY_UTIL_H
+#define EZ_RESEARCH_QUERY_UTIL_H
 
 #include "llvm/ADT/SmallPtrSet.h"
 
@@ -89,6 +89,14 @@ struct LoopInfo {
     int64_t ub;   // [lb, ub)
     int64_t step;
     mlir::affine::AffineForOp for_op;
+
+    bool operator == (const LoopInfo &other) const {
+        return for_op == other.for_op;
+    }
+
+    bool operator < (const LoopInfo &other) const {
+        return for_op < other.for_op;
+    }
 };
 
 inline void collectAffineForIVs(
@@ -203,4 +211,4 @@ inline std::optional<int64_t> getConstantIndex(mlir::Value idx) {
 
 }
 
-#endif //BUILD_QUERYUTIL_H
+#endif //EZ_RESEARCH_QUERY_UTIL_H

@@ -168,6 +168,10 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 	        HoistBoundary(pm);
 	    }
 
+	    if (opt.enableLoopTiling.getValue()) {
+	        LoopTiling(pm);
+	    }
+
 	    if (opt.enableAffineVevtorize.getValue()) {
 	        AffineVectorize(pm);
 	        LoopPeeling(pm);

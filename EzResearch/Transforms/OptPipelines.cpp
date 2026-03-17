@@ -44,4 +44,15 @@ void LoopPeeling(mlir::OpPassManager &pm) {
     pm.addPass(mlir::createCSEPass());
 }
 
+void LoopTiling(mlir::OpPassManager &pm) {
+    pm.addPass(createOptLoopTilingPass());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+
+    auto &fpm = pm.nest<mlir::func::FuncOp>();
+    fpm.addPass(mlir::affine::createAffineLoopInvariantCodeMotionPass());
+    fpm.addPass(mlir::createCanonicalizerPass());
+    fpm.addPass(mlir::createCSEPass());
+}
+
 }

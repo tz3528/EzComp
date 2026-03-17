@@ -37,26 +37,21 @@ CXX_COMPILER = "@CXX_COMPILER@"
 HDF5_LIBS = "@EZCOMPUTE_HDF5_LIBS@"
 HDF5_INCLUDE_DIRS = "@HDF5_INCLUDE_DIRS@"
 
-OPT_LEVELS = ["O2", "O3"]
 EZCOMP_COLOR = "#e74c3c"
 NUM_RUNS = 10
 CONFIG_FILE_NAME = "compare_config.json"
 
 
-def load_ezcomp_configs(test_name):
+def load_configs():
     """
-    从 compare 目录加载 EzComp 配置
-
-    Args:
-        test_name: 测试名称（测试目录名）
+    从 compare 目录加载配置文件
 
     Returns:
-        list: EzComp 配置列表
+        dict: 配置字典，包含 reference_configs 和 ezcomp_configs
 
     Raises:
         SystemExit: 配置文件不存在或配置无效时退出程序
     """
-    # 配置文件位于源码目录的 compare 目录下
     config_path = os.path.join(COMPARE_TEST_SOURCE_DIR, CONFIG_FILE_NAME)
 
     if not os.path.exists(config_path):
@@ -67,16 +62,15 @@ def load_ezcomp_configs(test_name):
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
 
-        # 查找测试对应的配置
-        if test_name not in config:
-            print(f"错误: 配置文件中未找到测试 '{test_name}' 的配置")
+        if "ezcomp_configs" not in config:
+            print("错误: 配置文件中缺少 'ezcomp_configs' 字段")
             sys.exit(1)
 
-        if "ezcomp_configs" not in config[test_name]:
-            print(f"错误: 测试 '{test_name}' 的配置中缺少 'ezcomp_configs' 字段")
+        if "reference_configs" not in config:
+            print("错误: 配置文件中缺少 'reference_configs' 字段")
             sys.exit(1)
 
-        return config[test_name]["ezcomp_configs"]
+        return config
 
     except json.JSONDecodeError as e:
         print(f"错误: 配置文件 JSON 解析失败: {e}")
@@ -357,8 +351,10 @@ def main():
         print(f"错误: 在目录 {test_dir_path} 中未找到 reference.cpp")
         return 1
 
-    # 加载 EzComp 配置
-    ezcomp_configs = load_ezcomp_configs(args.test_dir)
+    # 加载配置
+    config = load_configs()
+    reference_configs = config["reference_configs"]
+    ezcomp_configs = config["ezcomp_configs"]
 
     print(f"测试目录: {args.test_dir}")
     print(f"Comp 文件: {comp_file}")
@@ -370,11 +366,14 @@ def main():
 
     print("========== 编译 reference.cpp ==========")
     compiled_refs = {}
-    for opt in OPT_LEVELS:
-        success, exe_path = compile_reference(CXX_COMPILER, ref_cpp, os.getcwd(), opt, HDF5_LIBS, HDF5_INCLUDE_DIRS)
-        print(f"[{opt}] 编译成功: {exe_path}" if success else f"[{opt}] 编译失败")
+    for ref_config in reference_configs:
+        opt_level = ref_config["opt_level"]
+        label = ref_config["label"]
+        key = ref_config["key"]
+        success, exe_path = compile_reference(CXX_COMPILER, ref_cpp, os.getcwd(), opt_level, HDF5_LIBS, HDF5_INCLUDE_DIRS)
+        print(f"[{label}] 编译成功: {exe_path}" if success else f"[{label}] 编译失败")
         if success:
-            compiled_refs[opt] = exe_path
+            compiled_refs[key] = {"exe": exe_path, "label": label, "opt_level": opt_level}
     print("=" * 50)
 
     print("========== 编译 EzComp ==========")
@@ -398,11 +397,13 @@ def main():
     print("=" * 50)
 
     print(f"========== 运行性能测试 ({args.runs} 次) ==========")
-    run_times = {key: [] for key in [*OPT_LEVELS, *(cfg["key"] for cfg in ezcomp_configs)]}
+    reference_keys = [cfg["key"] for cfg in reference_configs]
+    ezcomp_keys = [cfg["key"] for cfg in ezcomp_configs]
+    run_times = {key: [] for key in reference_keys + ezcomp_keys}
 
     for run_idx in range(args.runs):
         round_start = time.time()
-        round_tasks = [("ref", opt) for opt in OPT_LEVELS if opt in compiled_refs] + [
+        round_tasks = [("ref", key) for key in compiled_refs] + [
             ("ezcomp", key) for key in compiled_ezcomps
         ]
         random.shuffle(round_tasks)
@@ -415,13 +416,14 @@ def main():
                     print(f"Round {run_idx + 1}: {label} 失败")
                     return 1
             else:
+                ref_info = compiled_refs[version_key]
                 success, run_time = run_executable(
-                    compiled_refs[version_key],
+                    ref_info["exe"],
                     os.getcwd(),
-                    [f"result_{version_key}_{run_idx}.h5", f"{version_key}_{run_idx}"],
+                    [f"result_{ref_info['opt_level']}_{run_idx}.h5", f"{ref_info['opt_level']}_{run_idx}"],
                 )
                 if not success:
-                    print(f"Round {run_idx + 1}: Ref-{version_key} 失败")
+                    print(f"Round {run_idx + 1}: {ref_info['label']} 失败")
                     return 1
 
             run_times[version_key].append(run_time)
@@ -432,7 +434,7 @@ def main():
     print("========== 统计结果 ==========")
     perf_data = {"labels": [], "times": [], "colors": []}
     for label, key, color in (
-            *[(f"Ref-{opt}", opt, "#3498db") for opt in OPT_LEVELS],
+            *[(cfg["label"], cfg["key"], "#3498db") for cfg in reference_configs],
             *[(cfg["label"], cfg["key"], EZCOMP_COLOR) for cfg in ezcomp_configs],
     ):
         if run_times.get(key):
@@ -450,11 +452,13 @@ def main():
         all_data["ezcomp"] = ezcomp_data
         print(f"ezcomp result.h5: 数据集 {ezcomp_data['datasets']}")
 
-    ref_key = "O3"
+    # 使用最后一个 reference 配置作为验证基准
+    ref_config = reference_configs[-1]
+    ref_key = ref_config["opt_level"]
     last_ref_file = f"result_{ref_key}_{args.runs - 1}.h5"
     if (ref_data := load_h5_result(last_ref_file)):
         all_data[ref_key] = ref_data
-        print(f"{ref_key} {last_ref_file}: 数据集 {ref_data['datasets']}")
+        print(f"{ref_config['label']} {last_ref_file}: 数据集 {ref_data['datasets']}")
 
     passed, errors = verify_results(all_data, rtol=args.rtol)
     if not passed:
@@ -472,9 +476,9 @@ def main():
     print("========== 清理中间文件 ==========")
     cleaned_count = sum(
         os.remove(path) is None
-        for opt in OPT_LEVELS
+        for ref_cfg in reference_configs
         for run_idx in range(args.runs)
-        for path in [f"result_{opt}_{run_idx}.h5"]
+        for path in [f"result_{ref_cfg['opt_level']}_{run_idx}.h5"]
         if os.path.exists(path)
     )
     print(f"已清理 {cleaned_count} 个中间文件")
