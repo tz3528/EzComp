@@ -31,7 +31,6 @@ void solveDBD(
     uint64_t B, uint64_t M, uint64_t& ans_total, uint64_t& ans_halo) {
 
     if (tiling_size.size() == loop_infos.size()) {
-        reverse(tiling_size.begin(), tiling_size.end());
         auto halo = computeHalo(tiling_size, B);
         uint64_t ans = 1, sum = 1;
         for (size_t i = 0; i < loop_infos.size(); i++) {
@@ -42,7 +41,6 @@ void solveDBD(
         ans += halo;
 
         if (ans > alpha * M / B) {
-            reverse(tiling_size.begin(), tiling_size.end());
             return ;
         }
 
@@ -54,19 +52,18 @@ void solveDBD(
                 ans_size[i] = tiling_size[i];
             }
         }
-        else if (halo < ans_halo) {
+        else if (ans == ans_total && halo < ans_halo) {
             ans_total = ans;
             ans_halo = halo;
             for (size_t i = 0; i < loop_infos.size(); i++) {
                 ans_size[i] = tiling_size[i];
             }
         }
-        reverse(tiling_size.begin(), tiling_size.end());
         return ;
     }
 
     auto index = tiling_size.size();
-    auto n = loop_infos[index].ub - loop_infos[index].lb + 1;
+    auto n = loop_infos[index].ub - loop_infos[index].lb;
     if (index == loop_infos.size() - 1) {
         for (auto i = B; i <= n; i += B) {
             tiling_size.push_back(i);

@@ -15,7 +15,7 @@
 // 网格参数
 constexpr int NX = 2001;     // x 方向点数
 constexpr int NY = 2001;     // y 方向点数
-constexpr int NT = 4000;    // 时间步数
+constexpr int NT = 1000;    // 时间步数
 
 constexpr double X_LOWER = 0.0;
 constexpr double X_UPPER = 2000.0;

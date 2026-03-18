@@ -1,0 +1,44 @@
+{
+    "reference_configs": [
+        {
+            "key": "reference_O2",
+            "label": "Ref-O2",
+            "opt_level": "O2"
+        },
+        {
+            "key": "reference_O3",
+            "label": "Ref-O3",
+            "opt_level": "O3"
+        }
+    ],
+    "ezcomp_configs": [
+        {
+            "key": "ezcomp_no_opt",
+            "label": "EzComp-NoOpt",
+            "emit": "compile",
+            "pipeline": "builtin.module(lowering{base-llvm})",
+            "output_name": "no_opt"
+        },
+        {
+            "key": "ezcomp_vectorize",
+            "label": "EzComp-Vec",
+            "emit": "compile",
+            "pipeline": "builtin.module(lowering{base-llvm hoist-boundary affine-vectorize})",
+            "output_name": "vectorize"
+        },
+        {
+            "key": "ezcomp_tiling",
+            "label": "EzComp-Tiling",
+            "emit": "compile",
+            "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling})",
+            "output_name": "tiling"
+        },
+        {
+            "key": "ezcomp_tiling_vectorize",
+            "label": "EzComp-Tiling-Vec",
+            "emit": "compile",
+            "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling affine-vectorize})",
+            "output_name": "tiling_vectorize"
+        }
+    ]
+}

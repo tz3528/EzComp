@@ -474,14 +474,23 @@ def main():
         print("=" * 50)
 
     print("========== 清理中间文件 ==========")
-    cleaned_count = sum(
-        os.remove(path) is None
-        for ref_cfg in reference_configs
-        for run_idx in range(args.runs)
-        for path in [f"result_{ref_cfg['opt_level']}_{run_idx}.h5"]
-        if os.path.exists(path)
-    )
-    print(f"已清理 {cleaned_count} 个中间文件")
+    cleaned_count = 0
+
+    # 清理 reference 生成的中间文件
+    for ref_cfg in reference_configs:
+        for run_idx in range(args.runs):
+            path = f"result_{ref_cfg['opt_level']}_{run_idx}.h5"
+            if os.path.exists(path):
+                os.remove(path)
+                cleaned_count += 1
+
+    # 清理 ezcomp 生成的 result.h5
+    ezcomp_result = "result.h5"
+    if os.path.exists(ezcomp_result):
+        os.remove(ezcomp_result)
+        cleaned_count += 1
+
+    print(f"已清理 {cleaned_count} 个 h5 文件")
     print("=" * 50)
 
     print("\n✅ 所有测试通过!")
