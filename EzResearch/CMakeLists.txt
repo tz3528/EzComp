@@ -28,6 +28,7 @@ target_link_libraries(EzResearch PUBLIC
         MLIRFuncDialect
         MLIRLLVMDialect
         MLIRVectorDialect
+
         # 转换支持
         MLIRAffineToStandard
         MLIRSCFToControlFlow
@@ -56,5 +57,6 @@ target_include_directories(EzResearch PUBLIC
 
 # 5. 添加子模块
 add_subdirectory(Generic)
+add_subdirectory(Parallelize)
 add_subdirectory(Tiling)
 add_subdirectory(Transforms)

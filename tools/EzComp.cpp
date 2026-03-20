@@ -27,8 +27,11 @@
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Conversion/OpenMPToLLVM/ConvertOpenMPToLLVM.h"
+#include "mlir/Conversion/SCFToOpenMP/SCFToOpenMP.h"
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
+#include "mlir/Target/LLVMIR/Dialect/OpenMP/OpenMPToLLVMIRTranslation.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -38,6 +41,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
@@ -69,6 +73,8 @@ static void registerNeededExtensions(mlir::DialectRegistry &registry) {
     mlir::registerConvertMemRefToLLVMInterface(registry);
     mlir::ub::registerConvertUBToLLVMInterface(registry);
     mlir::vector::registerConvertVectorToLLVMInterface(registry);
+    mlir::registerConvertOpenMPToLLVMInterface(registry);
+    mlir::registerOpenMPDialectTranslation(registry);
     // Func 内联扩展
     mlir::func::registerInlinerExtension(registry);
 }
@@ -151,6 +157,7 @@ static void LoadDialect(mlir::MLIRContext &context) {
     context.getOrLoadDialect<mlir::func::FuncDialect>();
     context.getOrLoadDialect<mlir::LLVM::LLVMDialect>();
     context.getOrLoadDialect<mlir::ub::UBDialect>();
+    context.getOrLoadDialect<mlir::omp::OpenMPDialect>();
 }
 
 struct PipelineOptions : LoweringOptions, OptimizationOptions {};
@@ -172,6 +179,10 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 	        LoopTiling(pm);
 	    }
 
+	    if (opt.enableLoopParallelize.getValue()) {
+	        LoopParallelize(pm);
+	    }
+
 	    if (opt.enableAffineVevtorize.getValue()) {
 	        AffineVectorize(pm);
 	        LoopPeeling(pm);
@@ -183,6 +194,10 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 	//===--------------------------------------------------------------------===//
 	if (opt.enableAffineToSCF.getValue() || opt.enableToLLVM.getValue()) {
 	    AffineToSCF(pm);
+	    if (opt.enableLoopParallelize.getValue()) {
+	        pm.addPass(mlir::createConvertSCFToOpenMPPass());
+	        pm.addPass(mlir::createConvertOpenMPToLLVMPass());
+	    }
 	}
 
 	//===--------------------------------------------------------------------===//

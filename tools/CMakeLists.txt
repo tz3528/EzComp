@@ -43,6 +43,7 @@ target_link_libraries(ezcomp PRIVATE
         MLIRSCFDialect
         MLIRUBDialect
         MLIRVectorDialect
+        MLIROpenMPDialect
 
         # --- 转换库 ---
         MLIRAffineToStandard
@@ -55,6 +56,8 @@ target_link_libraries(ezcomp PRIVATE
         MLIRMemRefToLLVM
         MLIRReconcileUnrealizedCasts
         MLIRSCFToControlFlow
+        MLIRSCFToOpenMP
+        MLIROpenMPToLLVM
         MLIRUBToLLVM
         MLIRVectorToLLVM
 )

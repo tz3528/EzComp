@@ -55,4 +55,10 @@ void LoopTiling(mlir::OpPassManager &pm) {
     fpm.addPass(mlir::createCSEPass());
 }
 
+void LoopParallelize(mlir::OpPassManager &pm) {
+    pm.addPass(createOptLoopParallelizePass());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+}
+
 }

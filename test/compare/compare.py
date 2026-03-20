@@ -27,7 +27,10 @@ import sys
 import time
 
 import h5py
+import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.font_manager import FontProperties
+from matplotlib.patches import Patch
 import numpy as np
 
 # 由 CMake 配置注入
@@ -37,9 +40,26 @@ CXX_COMPILER = "@CXX_COMPILER@"
 HDF5_LIBS = "@EZCOMPUTE_HDF5_LIBS@"
 HDF5_INCLUDE_DIRS = "@HDF5_INCLUDE_DIRS@"
 
-EZCOMP_COLOR = "#e74c3c"
 NUM_RUNS = 10
 CONFIG_FILE_NAME = "compare_config.json"
+
+# ── 绘图常量 ──────────────────────────────────────────────────────────────────
+BASELINE_LABEL = "Ref-O2"
+
+# Tableau 10 配色方案
+REF_FACE_COLOR = "#4E79A7"        # Reference 柱子（钢蓝）
+EZCOMP_FACE_COLOR = "#F28E2B"     # EzComp 柱子（暖橙）
+BAR_EDGE_COLOR = "#333333"        # 柱子边框色
+BAR_EDGE_WIDTH = 0.5              # 柱子边框宽度
+
+# 中文字体候选列表（仿宋GB2312），按平台优先级排列
+_CN_FONT_FAMILIES = [
+    "FangSong_GB2312",      # Linux (实际注册名)
+    "仿宋_GB2312",           # Linux (中文名)
+    "FangSong",             # Windows
+    "仿宋",                  # Windows (中文名)
+    "STFangsong",           # macOS
+]
 
 
 def load_configs():
@@ -264,60 +284,158 @@ def verify_results(all_data, rtol=1e-6):
     return True, []
 
 
-def plot_performance(perf_data, output_path="performance_comparison.png"):
-    labels, times, colors = perf_data["labels"], perf_data["times"], perf_data["colors"]
-    if not labels:
+# ═══════════════════════════════════════════════════════════════════════════════
+#  绘  图
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _setup_fonts():
+    """配置学术论文字体：英文 Times New Roman，数学 STIX"""
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman"] + plt.rcParams["font.serif"],
+        "mathtext.fontset": "stix",
+        "axes.unicode_minus": False,
+    })
+
+
+def _get_cn_font(size=13):
+    """获取中文宋体 FontProperties，自动在候选列表中查找可用字体"""
+    from matplotlib.font_manager import findfont
+    for family in _CN_FONT_FAMILIES:
+        fp = FontProperties(family=family, size=size)
+        resolved = findfont(fp, fallback_to_default=False)
+        if resolved and "LastResort" not in resolved:
+            return fp
+    print("警告: 未找到宋体字体，中文标题将使用默认 serif 字体")
+    return FontProperties(family="serif", size=size)
+
+
+def plot_performance(perf_data, output_path="performance_comparison.pdf",
+                     num_runs=NUM_RUNS):
+    """
+    绘制学术风格性能对比柱状图（Tableau 10 配色）
+
+    - 白底，隐去顶/右轴线
+    - Reference 钢蓝，EzComp 暖橙，无纹理
+    - 柱顶标注时间值，x 轴下方标注相对加速比
+    - 输出 PDF 矢量图 + PNG 预览
+    """
+    labels = perf_data["labels"]
+    means = np.array(perf_data["times"])
+    n_ref = perf_data.get("n_ref", 0)
+    n_ez = perf_data.get("n_ez", 0)
+
+    if len(labels) == 0:
         print("没有足够的数据来绘制性能比较图")
         return
 
-    baseline_time = next((t for label, t in zip(labels, times) if label == "Ref-O2"), None)
+    # ── 字体与全局样式 ────────────────────────────────────────────────────
+    _setup_fonts()
+    plt.rcParams.update({
+        "figure.facecolor": "white",
+        "axes.facecolor": "white",
+        "savefig.facecolor": "white",
+        "axes.linewidth": 0.8,
+    })
+    cn_title_font = _get_cn_font(size=13)
 
-    fig, ax = plt.subplots(figsize=(12, 6))
-    x = np.arange(len(labels))
-    bars = ax.bar(x, times, color=colors, edgecolor="black", linewidth=1.2)
+    # ── 加速比计算 ────────────────────────────────────────────────────────
+    baseline_idx = next(
+        (i for i, l in enumerate(labels) if l == BASELINE_LABEL), 0
+    )
+    baseline_time = means[baseline_idx]
+    speedups = baseline_time / np.where(means > 0, means, np.nan)
 
-    ax.set_xlabel("Version", fontsize=12)
-    ax.set_ylabel("Compute Time (seconds)", fontsize=12)
-    ax.set_title("Performance Comparison: EzComp vs Reference (10 runs average)", fontsize=14, fontweight="bold")
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=11)
+    # ── 图尺寸（单栏 ≈15 cm，按柱数自适应） ─────────────────────────────
+    n_bars = len(labels)
+    fig_w_inch = max(5.9, n_bars * 1.1 + 1.0)
+    fig_h_inch = 3.8
+    fig, ax = plt.subplots(figsize=(fig_w_inch, fig_h_inch))
 
-    for bar, time_val, label in zip(bars, times, labels):
-        height = bar.get_height()
-        if baseline_time is not None and label == "Ref-O2":
-            annotation = f"{time_val:.3f}s\n(baseline)"
-        elif baseline_time is not None and baseline_time > 0:
-            annotation = f"{time_val:.3f}s\n({baseline_time / time_val:.2f}x)"
-        else:
-            annotation = f"{time_val:.3f}s"
+    x = np.arange(n_bars)
+    width = min(0.60, 3.0 / n_bars)
 
-        ax.annotate(
-            annotation,
-            xy=(bar.get_x() + bar.get_width() / 2, height),
-            xytext=(0, 3),
-            textcoords="offset points",
-            ha="center",
-            va="bottom",
-            fontsize=9,
+    # ── 绘制柱子（同组同色，无纹理） ─────────────────────────────────────
+    for i in range(n_bars):
+        ax.bar(
+            x[i], means[i], width,
+            color=REF_FACE_COLOR if i < n_ref else EZCOMP_FACE_COLOR,
+            edgecolor=BAR_EDGE_COLOR,
+            linewidth=BAR_EDGE_WIDTH,
+            zorder=3,
         )
 
-    ax.set_ylim(0, max(times) * 1.2)
-    ax.yaxis.grid(True, linestyle="--", alpha=0.7)
-    ax.set_axisbelow(True)
+    # ── 柱顶数值标注 ─────────────────────────────────────────────────────
+    y_pad = means.max() * 0.025
+    for i in range(n_bars):
+        ax.text(
+            x[i], means[i] + y_pad,
+            f"{means[i]:.3f} s",
+            ha="center", va="bottom",
+            fontsize=9,
+            color="#333333",
+                  )
 
-    from matplotlib.patches import Patch
-    ax.legend(
-        handles=[
-            Patch(facecolor="#3498db", edgecolor="black", label="Reference (C++)"),
-            Patch(facecolor=EZCOMP_COLOR, edgecolor="black", label="EzComp"),
-        ],
-        loc="upper right",
+    # ── x 轴：名称 + 加速比 ──────────────────────────────────────────────
+    x_tick_labels = []
+    for i, label in enumerate(labels):
+        if i == baseline_idx:
+            x_tick_labels.append(f"{label}\n(baseline)")
+        else:
+            x_tick_labels.append(f"{label}\n({speedups[i]:.2f}\u00d7)")
+    ax.set_xticks(x)
+    ax.set_xticklabels(x_tick_labels, fontsize=9)
+
+    # ── y 轴 ─────────────────────────────────────────────────────────────
+    ax.set_ylabel("计算时间 (s)", fontproperties=_get_cn_font(size=11),
+                  labelpad=8)
+    ax.set_ylim(0, means.max() * 1.22)
+
+    # ── 标题 ─────────────────────────────────────────────────────────────
+    ax.set_title(
+        "性能对比",
+        fontproperties=cn_title_font,
+        pad=12,
     )
 
+    # ── 网格线（淡灰水平虚线） ───────────────────────────────────────────
+    ax.yaxis.grid(True, linestyle="--", linewidth=0.5, alpha=0.45,
+                  color="#cccccc", zorder=0)
+    ax.set_axisbelow(True)
+
+    # ── 隐去顶/右轴线 ────────────────────────────────────────────────────
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # ── 图例 ──────────────────────────────────────────────────────────────
+    legend_handles = [
+        Patch(facecolor=REF_FACE_COLOR, edgecolor=BAR_EDGE_COLOR,
+              label="Reference (C++)"),
+        Patch(facecolor=EZCOMP_FACE_COLOR, edgecolor=BAR_EDGE_COLOR,
+              label="EzComp"),
+    ]
+    ax.legend(
+        handles=legend_handles, loc="upper right",
+        fontsize=9, framealpha=0.9, edgecolor="#cccccc",
+    )
+
+    # ── 保存 ──────────────────────────────────────────────────────────────
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
-    print(f"\nPerformance comparison chart saved to: {output_path}")
+
+    pdf_path = output_path
+    plt.savefig(pdf_path, format="pdf", bbox_inches="tight", pad_inches=0.08)
+    print(f"\n矢量图已保存至: {pdf_path}")
+
+    png_path = os.path.splitext(output_path)[0] + ".png"
+    plt.savefig(png_path, format="png", dpi=300, bbox_inches="tight",
+                pad_inches=0.08)
+    print(f"预览图已保存至: {png_path}")
+
     plt.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 def main():
@@ -378,22 +496,22 @@ def main():
 
     print("========== 编译 EzComp ==========")
     compiled_ezcomps = {}
-    for config in ezcomp_configs:
-        print(f"--- {config['label']} ---")
+    for cfg in ezcomp_configs:
+        print(f"--- {cfg['label']} ---")
         success, exe_path = compile_ezcomp(
             EZCOMP_EXECUTABLE,
             comp_file,
             os.getcwd(),
             args.test_dir,
-            f"{args.test_dir}_{config['output_name']}",
-            emit=config["emit"],
-            pipeline=config.get("pipeline"),
+            f"{args.test_dir}_{cfg['output_name']}",
+            emit=cfg["emit"],
+            pipeline=cfg.get("pipeline"),
         )
         if not success:
-            print(f"[{config['label']}] 编译失败")
+            print(f"[{cfg['label']}] 编译失败")
             return 1
-        print(f"[{config['label']}] 编译成功: {exe_path}")
-        compiled_ezcomps[config["key"]] = {"exe": exe_path, "label": config["label"]}
+        print(f"[{cfg['label']}] 编译成功: {exe_path}")
+        compiled_ezcomps[cfg["key"]] = {"exe": exe_path, "label": cfg["label"]}
     print("=" * 50)
 
     print(f"========== 运行性能测试 ({args.runs} 次) ==========")
@@ -432,18 +550,28 @@ def main():
     print("=" * 50)
 
     print("========== 统计结果 ==========")
-    perf_data = {"labels": [], "times": [], "colors": []}
-    for label, key, color in (
-            *[(cfg["label"], cfg["key"], "#3498db") for cfg in reference_configs],
-            *[(cfg["label"], cfg["key"], EZCOMP_COLOR) for cfg in ezcomp_configs],
-    ):
+    perf_data = {"labels": [], "times": [], "n_ref": 0, "n_ez": 0}
+
+    for cfg in reference_configs:
+        key = cfg["key"]
         if run_times.get(key):
-            times_arr = np.array(run_times[key])
-            avg_time, std_time = np.mean(times_arr), np.std(times_arr)
-            print(f"{label}: 平均 {avg_time:.3f}s ± {std_time:.3f}s (n={len(times_arr)})")
-            perf_data["labels"].append(label)
-            perf_data["times"].append(avg_time)
-            perf_data["colors"].append(color)
+            arr = np.array(run_times[key])
+            avg, std = float(np.mean(arr)), float(np.std(arr))
+            print(f"{cfg['label']}: 平均 {avg:.3f}s ± {std:.3f}s (n={len(arr)})")
+            perf_data["labels"].append(cfg["label"])
+            perf_data["times"].append(avg)
+            perf_data["n_ref"] += 1
+
+    for cfg in ezcomp_configs:
+        key = cfg["key"]
+        if run_times.get(key):
+            arr = np.array(run_times[key])
+            avg, std = float(np.mean(arr)), float(np.std(arr))
+            print(f"{cfg['label']}: 平均 {avg:.3f}s ± {std:.3f}s (n={len(arr)})")
+            perf_data["labels"].append(cfg["label"])
+            perf_data["times"].append(avg)
+            perf_data["n_ez"] += 1
+
     print("=" * 50)
 
     print("========== 验证结果 ==========")
@@ -470,7 +598,11 @@ def main():
 
     if not args.no_plot:
         print("========== 绘制性能比较图 ==========")
-        plot_performance(perf_data, output_path=os.path.join(os.getcwd(), "performance_comparison.png"))
+        plot_performance(
+            perf_data,
+            output_path=os.path.join(os.getcwd(), "performance_comparison.pdf"),
+            num_runs=args.runs,
+        )
         print("=" * 50)
 
     print("========== 清理中间文件 ==========")

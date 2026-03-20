@@ -14,31 +14,59 @@
     "ezcomp_configs": [
         {
             "key": "ezcomp_no_opt",
-            "label": "EzComp-NoOpt",
+            "label": "NoOpt",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm})",
             "output_name": "no_opt"
         },
         {
+            "key": "ezcomp_no_opt_parallelize",
+            "label": "Par",
+            "emit": "compile",
+            "pipeline": "builtin.module(lowering{base-llvm loop-parallelize})",
+            "output_name": "parallelize"
+        },
+        {
             "key": "ezcomp_vectorize",
-            "label": "EzComp-Vec",
+            "label": "Vec",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm hoist-boundary affine-vectorize})",
             "output_name": "vectorize"
         },
         {
+            "key": "ezcomp_vectorize_parallelize",
+            "label": "Vec+Par",
+            "emit": "compile",
+            "pipeline": "builtin.module(lowering{base-llvm hoist-boundary affine-vectorize loop-parallelize})",
+            "output_name": "vectorize_parallelize"
+        },
+        {
             "key": "ezcomp_tiling",
-            "label": "EzComp-Tiling",
+            "label": "Tile",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling})",
             "output_name": "tiling"
         },
         {
+            "key": "ezcomp_tiling_parallelize",
+            "label": "Tile+Par",
+            "emit": "compile",
+            "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling loop-parallelize})",
+            "output_name": "tiling_parallelize"
+        },
+        {
             "key": "ezcomp_tiling_vectorize",
-            "label": "EzComp-Tiling-Vec",
+            "label": "Tile+Vec",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling affine-vectorize})",
             "output_name": "tiling_vectorize"
+        },
+        {
+            "key": "ezcomp_tiling_vectorize_parallelize",
+            "label": "Tile+Vec+Par",
+            "emit": "compile",
+            "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling affine-vectorize loop-parallelize})",
+            "output_name": "tiling_vectorize_parallelize"
         }
     ]
 }

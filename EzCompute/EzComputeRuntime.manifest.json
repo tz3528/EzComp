@@ -5,6 +5,7 @@
     "Timer": "@EZCOMPUTE_TIMER_REL@"
   },
   "libraries": [
-    "@EZCOMPUTE_HDF5_LIBS@"
+    "@EZCOMPUTE_HDF5_LIBS@",
+    "@EZCOMPUTE_OPENMP_LIBS@"
   ]
 }

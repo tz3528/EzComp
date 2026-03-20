@@ -46,16 +46,23 @@ struct OptimizationOptions : mlir::PassPipelineOptions<OptimizationOptions> {
         llvm::cl::desc("Tilting the loop"),
         llvm::cl::init(false)};
 
+    Option<bool> enableLoopParallelize{
+        *this, "loop-parallelize",
+        llvm::cl::desc("parallelize the loop"),
+        llvm::cl::init(false)};
+
 };
 
 std::unique_ptr<mlir::Pass> createOptBoundaryHoistPass();
 std::unique_ptr<mlir::Pass> createOptLoopPeelingPass();
 std::unique_ptr<mlir::Pass> createOptLoopTilingPass();
+std::unique_ptr<mlir::Pass> createOptLoopParallelizePass();
 
 void HoistBoundary(mlir::OpPassManager &pm);
 void AffineVectorize(mlir::OpPassManager &pm);
 void LoopPeeling(mlir::OpPassManager &pm);
 void LoopTiling(mlir::OpPassManager &pm);
+void LoopParallelize(mlir::OpPassManager &pm);
 
 }
 
