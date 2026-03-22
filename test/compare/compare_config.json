@@ -3,12 +3,23 @@
         {
             "key": "reference_O2",
             "label": "Ref-O2",
-            "opt_level": "O2"
+            "opt_level": "O2",
+            "openmp": false,
+            "runtime_env": ""
         },
         {
             "key": "reference_O3",
             "label": "Ref-O3",
-            "opt_level": "O3"
+            "opt_level": "O3",
+            "openmp": false,
+            "runtime_env": ""
+        },
+        {
+            "key": "reference_O3_omp",
+            "label": "Ref-O3-OMP",
+            "opt_level": "O3",
+            "openmp": true,
+            "runtime_env": "OMP_NUM_THREADS=auto OMP_PROC_BIND=true OMP_PLACES=cores"
         }
     ],
     "ezcomp_configs": [
@@ -17,56 +28,64 @@
             "label": "NoOpt",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm})",
-            "output_name": "no_opt"
+            "output_name": "no_opt",
+            "runtime_env": ""
         },
         {
             "key": "ezcomp_no_opt_parallelize",
             "label": "Par",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm loop-parallelize})",
-            "output_name": "parallelize"
+            "output_name": "parallelize",
+            "runtime_env": "OMP_NUM_THREADS=auto OMP_PROC_BIND=true OMP_PLACES=cores"
         },
         {
             "key": "ezcomp_vectorize",
             "label": "Vec",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm hoist-boundary affine-vectorize})",
-            "output_name": "vectorize"
+            "output_name": "vectorize",
+            "runtime_env": ""
         },
         {
             "key": "ezcomp_vectorize_parallelize",
             "label": "Vec+Par",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm hoist-boundary affine-vectorize loop-parallelize})",
-            "output_name": "vectorize_parallelize"
+            "output_name": "vectorize_parallelize",
+            "runtime_env": "OMP_NUM_THREADS=auto OMP_PROC_BIND=true OMP_PLACES=cores"
         },
         {
             "key": "ezcomp_tiling",
             "label": "Tile",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling})",
-            "output_name": "tiling"
+            "output_name": "tiling",
+            "runtime_env": ""
         },
         {
             "key": "ezcomp_tiling_parallelize",
             "label": "Tile+Par",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling loop-parallelize})",
-            "output_name": "tiling_parallelize"
+            "output_name": "tiling_parallelize",
+            "runtime_env": "OMP_NUM_THREADS=auto OMP_PROC_BIND=true OMP_PLACES=cores"
         },
         {
             "key": "ezcomp_tiling_vectorize",
             "label": "Tile+Vec",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling affine-vectorize})",
-            "output_name": "tiling_vectorize"
+            "output_name": "tiling_vectorize",
+            "runtime_env": ""
         },
         {
             "key": "ezcomp_tiling_vectorize_parallelize",
             "label": "Tile+Vec+Par",
             "emit": "compile",
             "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling affine-vectorize loop-parallelize})",
-            "output_name": "tiling_vectorize_parallelize"
+            "output_name": "tiling_vectorize_parallelize",
+            "runtime_env": "OMP_NUM_THREADS=auto OMP_PROC_BIND=true OMP_PLACES=cores"
         }
     ]
 }

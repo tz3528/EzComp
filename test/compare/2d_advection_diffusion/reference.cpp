@@ -1,13 +1,14 @@
 //===-- reference.cpp -----------------------------------------*- C++ -*-===//
 //
-// 2D 热方程参考实现
-// 方程: ∂u/∂t = α * (∂²u/∂x² + ∂²u/∂y²)
-// 离散化: FDM (有限差分法)
+// 2D 对流扩散方程参考实现
+// 方程: ∂u/∂t + vx*∂u/∂x + vy*∂u/∂y = α*(∂²u/∂x² + ∂²u/∂y²)
+// 离散化: FDM (对流项-迎风格式, 扩散项-中心差分)
 //
 //===----------------------------------------------------------------------===//
 
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <chrono>
 #include <vector>
 #include <hdf5.h>
@@ -19,14 +20,17 @@
 // 网格参数
 constexpr int NX = 2001;     // x 方向点数
 constexpr int NY = 2001;     // y 方向点数
-constexpr int NT = 1000;    // 时间步数
+constexpr int NT = 1000;     // 时间步数
 
 constexpr double X_LOWER = 0.0;
 constexpr double X_UPPER = 2000.0;
 constexpr double Y_LOWER = 0.0;
 constexpr double Y_UPPER = 2000.0;
 
-constexpr double ALPHA = 0.5;  // 热扩散系数
+// 物理参数
+constexpr double ALPHA = 0.3;   // 扩散系数
+constexpr double VX = 0.5;      // x方向对流速度
+constexpr double VY = 0.3;      // y方向对流速度
 
 // 格式化输出用时
 static void print_timer(const char* label, const char* tag, long long ns) {
@@ -101,8 +105,6 @@ int main(int argc, char* argv[]) {
     using Clock = std::chrono::steady_clock;
 
     // 解析命令行参数
-    // argv[1]: 输出文件名 (默认: expected_result.h5)
-    // argv[2]: 运行标识标签 (默认: 空)
     const char* output_file = "expected_result.h5";
     const char* tag = "";
 
@@ -122,7 +124,7 @@ int main(int argc, char* argv[]) {
 
     double dx = (X_UPPER - X_LOWER) / (NX - 1);
     double dy = (Y_UPPER - Y_LOWER) / (NY - 1);
-    double dt = 0.5;
+    double dt = 0.25;
 
     for (int i = 0; i < NX; ++i) {
         coord_x[i] = X_LOWER + i * dx;
@@ -131,41 +133,52 @@ int main(int argc, char* argv[]) {
         coord_y[j] = Y_LOWER + j * dy;
     }
 
-    // 温度场 (双缓冲)
+    // 浓度场 (双缓冲)
     std::vector<double> u_curr(NX * NY, 0.0);
     std::vector<double> u_next(NX * NY, 0.0);
 
-    // 初始条件: u(x, y, 0) = 0
-    for (int i = 0; i < NX * NY; ++i) {
-        u_curr[i] = 0.0;
+    // 初始条件: 中心高斯分布
+    double x_center = 1000.0;
+    double y_center = 1000.0;
+    double sigma_sq = 50000.0;
+    for (int i = 0; i < NX; ++i) {
+        for (int j = 0; j < NY; ++j) {
+            double x = coord_x[i];
+            double y = coord_y[j];
+            u_curr[i * NY + j] = 100.0 * std::exp(-((x - x_center) * (x - x_center) +
+                                                     (y - y_center) * (y - y_center)) / sigma_sq);
+        }
     }
 
     // 边界条件函数
     auto apply_boundary = [&]() {
-        // u(0, y, t) = 100 (左边界)
+        // 入流边界 (左、下): u = 0
         for (int j = 0; j < NY; ++j) {
-            u_curr[0 * NY + j] = 100.0;
+            u_curr[0 * NY + j] = 0.0;
         }
-        // u(2000, y, t) = 0 (右边界)
+        for (int i = 0; i < NX; ++i) {
+            u_curr[i * NY + 0] = 0.0;
+        }
+        // 出流边界 (右、上): 零梯度
         for (int j = 0; j < NY; ++j) {
-            u_curr[(NX - 1) * NY + j] = 0.0;
+            u_curr[(NX - 1) * NY + j] = u_curr[(NX - 2) * NY + j];
         }
-        // u(x, 0, t) = 100 (下边界)
         for (int i = 0; i < NX; ++i) {
-            u_curr[i * NY + 0] = 100.0;
-        }
-        // u(x, 2000, t) = 0 (上边界)
-        for (int i = 0; i < NX; ++i) {
-            u_curr[i * NY + (NY - 1)] = 0.0;
+            u_curr[i * NY + (NY - 1)] = u_curr[i * NY + (NY - 2)];
         }
     };
 
     // 应用初始边界条件
     apply_boundary();
 
-    // 系数
+    // 扩散系数
     double rx = ALPHA * dt / (dx * dx);
     double ry = ALPHA * dt / (dy * dy);
+    // 对流系数 (迎风格式)
+    double cx_neg = std::max(0.0, VX) * dt / dx;   // vx > 0 时的系数
+    double cx_pos = std::max(0.0, -VX) * dt / dx;  // vx < 0 时的系数
+    double cy_neg = std::max(0.0, VY) * dt / dy;   // vy > 0 时的系数
+    double cy_pos = std::max(0.0, -VY) * dt / dy;  // vy < 0 时的系数
 
     // ========== 时间迭代 ==========
     for (int t = 0; t < NT; ++t) {
@@ -182,9 +195,18 @@ int main(int argc, char* argv[]) {
                 double u_down = u_curr[i * NY + (j - 1)];
                 double u_up = u_curr[i * NY + (j + 1)];
 
-                // 二阶中心差分
-                u_next[idx] = u_center + rx * (u_left + u_right - 2.0 * u_center)
-                                      + ry * (u_down + u_up - 2.0 * u_center);
+                // 扩散项 (中心差分)
+                double diffusion = rx * (u_left + u_right - 2.0 * u_center)
+                                 + ry * (u_down + u_up - 2.0 * u_center);
+
+                // 对流项 (迎风格式)
+                // vx > 0: 使用左侧值; vx < 0: 使用右侧值
+                double advection_x = cx_neg * (u_center - u_left)
+                                   - cx_pos * (u_right - u_center);
+                double advection_y = cy_neg * (u_center - u_down)
+                                   - cy_pos * (u_up - u_center);
+
+                u_next[idx] = u_center + diffusion - advection_x - advection_y;
             }
         }
 

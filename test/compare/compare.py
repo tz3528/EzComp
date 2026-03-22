@@ -32,6 +32,7 @@ import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch
 import numpy as np
+import psutil
 
 # 由 CMake 配置注入
 EZCOMP_EXECUTABLE = "@EZCOMP_EXECUTABLE@"
@@ -39,6 +40,7 @@ COMPARE_TEST_SOURCE_DIR = "@COMPARE_TEST_SOURCE_DIR@"
 CXX_COMPILER = "@CXX_COMPILER@"
 HDF5_LIBS = "@EZCOMPUTE_HDF5_LIBS@"
 HDF5_INCLUDE_DIRS = "@HDF5_INCLUDE_DIRS@"
+OPENMP_LIBS = "@OPENMP_LIBS@"
 
 NUM_RUNS = 10
 CONFIG_FILE_NAME = "compare_config.json"
@@ -113,15 +115,35 @@ def get_executable_path(output_dir, name):
     return os.path.join(output_dir, name + (".exe" if sys.platform == "win32" else ""))
 
 
-def run_command(cmd, cwd=None):
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+def run_command(cmd, cwd=None, env=None):
+    run_env = os.environ.copy()
+    if env:
+        run_env.update(env)
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=run_env)
 
 
-def compile_reference(compiler, ref_cpp, output_dir, opt_level, hdf5_libs, hdf5_include_dirs):
-    executable_path = get_executable_path(output_dir, f"reference_{opt_level}")
+def compile_reference(compiler, ref_cpp, output_dir, opt_level, hdf5_libs, hdf5_include_dirs, openmp=False, openmp_libs=""):
+    suffix = "_omp" if openmp else ""
+    executable_path = get_executable_path(output_dir, f"reference_{opt_level}{suffix}")
     cmd = [compiler, f"-{opt_level}", "-o", executable_path, ref_cpp]
+    
+    # OpenMP 编译选项
+    if openmp:
+        cmd.append("-DUSE_OPENMP")
+        cmd.append("-fopenmp")
+    
     cmd += [arg for inc in filter(None, hdf5_include_dirs.split(";")) for arg in ("-I", inc)]
     cmd += [lib for lib in filter(None, hdf5_libs.split(";"))]
+    
+    # OpenMP 库路径
+    if openmp:
+        for lib in filter(None, openmp_libs.split(";")):
+            cmd.append(lib)
+            # 添加 rpath（仅 Linux 和 macOS）
+            if sys.platform.startswith("linux") or sys.platform == "darwin":
+                lib_dir = os.path.dirname(lib)
+                if lib_dir:
+                    cmd.append(f"-Wl,-rpath,{lib_dir}")
 
     try:
         result = run_command(cmd)
@@ -166,9 +188,20 @@ def parse_time_to_seconds(time_str):
     return hours * 3600 + minutes * 60 + seconds + ms / 1000.0
 
 
-def run_executable(executable, working_dir, args=None):
+def run_executable(executable, working_dir, args=None, runtime_env=None):
+    # 解析 runtime_env 字符串，如 "OMP_NUM_THREADS=8 OMP_PROC_BIND=true"
+    # 支持 OMP_NUM_THREADS=auto 自动使用物理核心数（避免超线程缓存争用）
+    env_dict = {}
+    if runtime_env:
+        for item in runtime_env.split():
+            if "=" in item:
+                key, value = item.split("=", 1)
+                if key == "OMP_NUM_THREADS" and value == "auto":
+                    value = str(psutil.cpu_count(logical=False))
+                env_dict[key] = value
+
     try:
-        result = run_command([executable, *(args or [])], cwd=working_dir)
+        result = run_command([executable, *(args or [])], cwd=working_dir, env=env_dict if env_dict else None)
         if result.returncode != 0:
             print(f"运行失败: {executable}")
             print(result.stderr)
@@ -263,8 +296,9 @@ def verify_results(all_data, rtol=1e-6):
         return False, errors
 
     abs_diff = np.abs(ezcomp_result - ref_result)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        rel_diff = np.where(np.abs(ref_result) < 1e-10, abs_diff, abs_diff / np.abs(ref_result))
+    # ACM 风格相对误差: |差值| / max(1, |参考值|)
+    # 当参考值较小时退化为绝对误差，避免除以接近0的值
+    rel_diff = abs_diff / np.maximum(1.0, np.abs(ref_result))
 
     max_abs_diff = np.max(abs_diff)
     max_rel_diff = np.nanmax(rel_diff)
@@ -323,6 +357,7 @@ def plot_performance(perf_data, output_path="performance_comparison.pdf",
     """
     labels = perf_data["labels"]
     means = np.array(perf_data["times"])
+    stds = np.array(perf_data.get("stds", [0.0] * len(labels)))
     n_ref = perf_data.get("n_ref", 0)
     n_ez = perf_data.get("n_ez", 0)
 
@@ -366,16 +401,27 @@ def plot_performance(perf_data, output_path="performance_comparison.pdf",
             zorder=3,
         )
 
+    # ── 误差棒 ────────────────────────────────────────────────────────────
+    ax.errorbar(
+        x, means, yerr=stds,
+        fmt="none",
+        ecolor="black",
+        elinewidth=1.0,
+        capsize=3,
+        capthick=1.0,
+        zorder=4,
+    )
+
     # ── 柱顶数值标注 ─────────────────────────────────────────────────────
-    y_pad = means.max() * 0.025
+    y_pad = (means + stds).max() * 0.02
     for i in range(n_bars):
         ax.text(
-            x[i], means[i] + y_pad,
+            x[i], means[i] + stds[i] + y_pad,
             f"{means[i]:.3f} s",
             ha="center", va="bottom",
             fontsize=9,
             color="#333333",
-                  )
+        )
 
     # ── x 轴：名称 + 加速比 ──────────────────────────────────────────────
     x_tick_labels = []
@@ -390,7 +436,9 @@ def plot_performance(perf_data, output_path="performance_comparison.pdf",
     # ── y 轴 ─────────────────────────────────────────────────────────────
     ax.set_ylabel("计算时间 (s)", fontproperties=_get_cn_font(size=11),
                   labelpad=8)
-    ax.set_ylim(0, means.max() * 1.22)
+    # 调整y轴范围以容纳误差棒
+    y_max = (means + stds).max()
+    ax.set_ylim(0, y_max * 1.15)
 
     # ── 标题 ─────────────────────────────────────────────────────────────
     ax.set_title(
@@ -488,10 +536,16 @@ def main():
         opt_level = ref_config["opt_level"]
         label = ref_config["label"]
         key = ref_config["key"]
-        success, exe_path = compile_reference(CXX_COMPILER, ref_cpp, os.getcwd(), opt_level, HDF5_LIBS, HDF5_INCLUDE_DIRS)
+        openmp = ref_config.get("openmp", False)
+        runtime_env = ref_config.get("runtime_env", "")
+        success, exe_path = compile_reference(
+            CXX_COMPILER, ref_cpp, os.getcwd(), opt_level, 
+            HDF5_LIBS, HDF5_INCLUDE_DIRS,
+            openmp=openmp, openmp_libs=OPENMP_LIBS
+        )
         print(f"[{label}] 编译成功: {exe_path}" if success else f"[{label}] 编译失败")
         if success:
-            compiled_refs[key] = {"exe": exe_path, "label": label, "opt_level": opt_level}
+            compiled_refs[key] = {"exe": exe_path, "label": label, "opt_level": opt_level, "openmp": openmp, "runtime_env": runtime_env}
     print("=" * 50)
 
     print("========== 编译 EzComp ==========")
@@ -511,7 +565,7 @@ def main():
             print(f"[{cfg['label']}] 编译失败")
             return 1
         print(f"[{cfg['label']}] 编译成功: {exe_path}")
-        compiled_ezcomps[cfg["key"]] = {"exe": exe_path, "label": cfg["label"]}
+        compiled_ezcomps[cfg["key"]] = {"exe": exe_path, "label": cfg["label"], "runtime_env": cfg.get("runtime_env", "")}
     print("=" * 50)
 
     print(f"========== 运行性能测试 ({args.runs} 次) ==========")
@@ -526,19 +580,22 @@ def main():
         ]
         random.shuffle(round_tasks)
 
-        for task_type, version_key in round_tasks:
+        for task_idx, (task_type, version_key) in enumerate(round_tasks):
             if task_type == "ezcomp":
                 label = compiled_ezcomps[version_key]["label"]
-                success, run_time = run_executable(compiled_ezcomps[version_key]["exe"], os.getcwd())
+                runtime_env = compiled_ezcomps[version_key].get("runtime_env", "")
+                success, run_time = run_executable(compiled_ezcomps[version_key]["exe"], os.getcwd(), runtime_env=runtime_env)
                 if not success:
                     print(f"Round {run_idx + 1}: {label} 失败")
                     return 1
             else:
                 ref_info = compiled_refs[version_key]
+                runtime_env = ref_info.get("runtime_env", "")
                 success, run_time = run_executable(
                     ref_info["exe"],
                     os.getcwd(),
                     [f"result_{ref_info['opt_level']}_{run_idx}.h5", f"{ref_info['opt_level']}_{run_idx}"],
+                    runtime_env=runtime_env,
                 )
                 if not success:
                     print(f"Round {run_idx + 1}: {ref_info['label']} 失败")
@@ -550,7 +607,7 @@ def main():
     print("=" * 50)
 
     print("========== 统计结果 ==========")
-    perf_data = {"labels": [], "times": [], "n_ref": 0, "n_ez": 0}
+    perf_data = {"labels": [], "times": [], "stds": [], "n_ref": 0, "n_ez": 0}
 
     for cfg in reference_configs:
         key = cfg["key"]
@@ -560,6 +617,7 @@ def main():
             print(f"{cfg['label']}: 平均 {avg:.3f}s ± {std:.3f}s (n={len(arr)})")
             perf_data["labels"].append(cfg["label"])
             perf_data["times"].append(avg)
+            perf_data["stds"].append(std)
             perf_data["n_ref"] += 1
 
     for cfg in ezcomp_configs:
@@ -570,6 +628,7 @@ def main():
             print(f"{cfg['label']}: 平均 {avg:.3f}s ± {std:.3f}s (n={len(arr)})")
             perf_data["labels"].append(cfg["label"])
             perf_data["times"].append(avg)
+            perf_data["stds"].append(std)
             perf_data["n_ez"] += 1
 
     print("=" * 50)

@@ -1,0 +1,55 @@
+# 3D对流扩散方程
+# 方程: ∂u/∂t + vx*∂u/∂x + vy*∂u/∂y + vz*∂u/∂z = α*(∂²u/∂x² + ∂²u/∂y² + ∂²u/∂z²)
+# 描述: 模拟三维流体中的标量输运（对流+扩散）
+
+declarations {
+    x[0,400,401];
+    y[0,400,401];
+    z[0,400,401];
+    t[0,100,101];
+}
+
+equations {
+    # 对流扩散方程（扩散系数 α=0.1，对流速度 vx=0.4, vy=0.3, vz=0.2）
+    diff(u(x,y,z,t),t,1)=0.1*(diff(u(x,y,z,t),x,2)+diff(u(x,y,z,t),y,2)+diff(u(x,y,z,t),z,2))-0.4*diff(u(x,y,z,t),x,1)-0.3*diff(u(x,y,z,t),y,1)-0.2*diff(u(x,y,z,t),z,1);
+
+    # x方向二阶空间导数（扩散项）
+    diff(u(x,y,z,t),x,2)=(u(x-1,y,z,t)+u(x+1,y,z,t)-2*u(x,y,z,t))/delta(x,2);
+
+    # y方向二阶空间导数（扩散项）
+    diff(u(x,y,z,t),y,2)=(u(x,y-1,z,t)+u(x,y+1,z,t)-2*u(x,y,z,t))/delta(y,2);
+
+    # z方向二阶空间导数（扩散项）
+    diff(u(x,y,z,t),z,2)=(u(x,y,z-1,t)+u(x,y,z+1,t)-2*u(x,y,z,t))/delta(z,2);
+
+    # x方向一阶空间导数（对流项，中心差分）
+    diff(u(x,y,z,t),x,1)=(u(x+1,y,z,t)-u(x-1,y,z,t))/(2*delta(x,1));
+
+    # y方向一阶空间导数（对流项，中心差分）
+    diff(u(x,y,z,t),y,1)=(u(x,y+1,z,t)-u(x,y-1,z,t))/(2*delta(y,1));
+
+    # z方向一阶空间导数（对流项，中心差分）
+    diff(u(x,y,z,t),z,1)=(u(x,y,z+1,t)-u(x,y,z-1,t))/(2*delta(z,1));
+
+    # 从时间导数更新到下一时间步
+    u(x,y,z,t+1) = u(x,y,z,t) + diff(u(x,y,z,t),t,1) * delta(t,1);
+
+    # 初始条件: 中心高斯分布
+    u(x,y,z,0)=100*exp(-((x-200)*(x-200)+(y-200)*(y-200)+(z-200)*(z-200))/10000);
+
+    # 边界条件: 入流边界为0，出流边界自然流出
+    u(0,y,z,t)=0;
+    u(400,y,z,t)=u(399,y,z,t);
+    u(x,0,z,t)=0;
+    u(x,400,z,t)=u(x,399,z,t);
+    u(x,y,0,t)=0;
+    u(x,y,400,t)=u(x,y,399,t);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,y,z,t)";
+    timeVar:"t";
+}

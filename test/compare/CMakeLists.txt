@@ -36,10 +36,13 @@ set(CXX_COMPILER "${CMAKE_CXX_COMPILER}")
 # HDF5 库和头文件路径 (从 EzCompute 传递)
 set(HDF5_INCLUDE_DIRS "${EZCOMPUTE_HDF5_INCLUDE_DIRS}")
 
+# OpenMP 库路径 (来自 LLVM 编译)
+set(OPENMP_LIBS "${EZCOMPUTE_OPENMP_LIBS}")
+
 # 测试数据源码目录
 set(COMPARE_TEST_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# 配置比较测试脚本 (注入 ezcomp 路径、编译器、HDF5 信息和源码目录)
+# 配置比较测试脚本 (注入 ezcomp 路径、编译器、HDF5、OpenMP 信息和源码目录)
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/compare.py
     ${CMAKE_CURRENT_BINARY_DIR}/compare.py
@@ -50,8 +53,8 @@ configure_file(
 # 用法: COMPARE_TEST_DIR=<test_dir> cmake --build . --target compare
 # 例如: COMPARE_TEST_DIR=2d_heat_equation cmake --build . --target compare
 add_custom_target(compare
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/compare.py $ENV{COMPARE_TEST_DIR}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/compare.py
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    COMMENT "Running compare script for test: $ENV{COMPARE_TEST_DIR}"
+    COMMENT "Running compare script"
     USES_TERMINAL
 )

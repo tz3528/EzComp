@@ -1,7 +1,7 @@
 //===-- reference.cpp -----------------------------------------*- C++ -*-===//
 //
-// 2D 热方程参考实现
-// 方程: ∂u/∂t = α * (∂²u/∂x² + ∂²u/∂y²)
+// 3D 热方程参考实现
+// 方程: ∂u/∂t = α * (∂²u/∂x² + ∂²u/∂y² + ∂²u/∂z²)
 // 离散化: FDM (有限差分法)
 //
 //===----------------------------------------------------------------------===//
@@ -17,16 +17,19 @@
 #endif
 
 // 网格参数
-constexpr int NX = 2001;     // x 方向点数
-constexpr int NY = 2001;     // y 方向点数
-constexpr int NT = 1000;    // 时间步数
+constexpr int NX = 401;     // x 方向点数
+constexpr int NY = 401;     // y 方向点数
+constexpr int NZ = 401;     // z 方向点数
+constexpr int NT = 100;     // 时间步数
 
 constexpr double X_LOWER = 0.0;
-constexpr double X_UPPER = 2000.0;
+constexpr double X_UPPER = 400.0;
 constexpr double Y_LOWER = 0.0;
-constexpr double Y_UPPER = 2000.0;
+constexpr double Y_UPPER = 400.0;
+constexpr double Z_LOWER = 0.0;
+constexpr double Z_UPPER = 400.0;
 
-constexpr double ALPHA = 0.5;  // 热扩散系数
+constexpr double ALPHA = 0.15;  // 热扩散系数
 
 // 格式化输出用时
 static void print_timer(const char* label, const char* tag, long long ns) {
@@ -55,13 +58,14 @@ static void print_timer(const char* label, const char* tag, long long ns) {
 static bool write_hdf5(const char* output_file,
                        const std::vector<double>& u,
                        const std::vector<double>& coord_x,
-                       const std::vector<double>& coord_y) {
+                       const std::vector<double>& coord_y,
+                       const std::vector<double>& coord_z) {
     hid_t file = H5Fcreate(output_file, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
     if (file < 0) return false;
 
     // 写入 result 数据集
-    hsize_t dims[2] = { static_cast<hsize_t>(NX), static_cast<hsize_t>(NY) };
-    hid_t space = H5Screate_simple(2, dims, nullptr);
+    hsize_t dims[3] = { static_cast<hsize_t>(NX), static_cast<hsize_t>(NY), static_cast<hsize_t>(NZ) };
+    hid_t space = H5Screate_simple(3, dims, nullptr);
     if (space < 0) { H5Fclose(file); return false; }
 
     hid_t dset = H5Dcreate2(file, "/result", H5T_NATIVE_DOUBLE, space,
@@ -93,6 +97,15 @@ static bool write_hdf5(const char* output_file,
     H5Dclose(dset_y);
     H5Sclose(space_y);
 
+    // 写入 coord_z
+    hsize_t dim_z[1] = { static_cast<hsize_t>(NZ) };
+    hid_t space_z = H5Screate_simple(1, dim_z, nullptr);
+    hid_t dset_z = H5Dcreate2(file, "/coord_z", H5T_NATIVE_DOUBLE, space_z,
+                              H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    H5Dwrite(dset_z, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, coord_z.data());
+    H5Dclose(dset_z);
+    H5Sclose(space_z);
+
     H5Fclose(file);
     return true;
 }
@@ -119,10 +132,12 @@ int main(int argc, char* argv[]) {
     // 坐标数组
     std::vector<double> coord_x(NX);
     std::vector<double> coord_y(NY);
+    std::vector<double> coord_z(NZ);
 
     double dx = (X_UPPER - X_LOWER) / (NX - 1);
     double dy = (Y_UPPER - Y_LOWER) / (NY - 1);
-    double dt = 0.5;
+    double dz = (Z_UPPER - Z_LOWER) / (NZ - 1);
+    double dt = 1.0;
 
     for (int i = 0; i < NX; ++i) {
         coord_x[i] = X_LOWER + i * dx;
@@ -130,33 +145,56 @@ int main(int argc, char* argv[]) {
     for (int j = 0; j < NY; ++j) {
         coord_y[j] = Y_LOWER + j * dy;
     }
+    for (int k = 0; k < NZ; ++k) {
+        coord_z[k] = Z_LOWER + k * dz;
+    }
 
     // 温度场 (双缓冲)
-    std::vector<double> u_curr(NX * NY, 0.0);
-    std::vector<double> u_next(NX * NY, 0.0);
+    std::vector<double> u_curr(NX * NY * NZ, 0.0);
+    std::vector<double> u_next(NX * NY * NZ, 0.0);
 
-    // 初始条件: u(x, y, 0) = 0
-    for (int i = 0; i < NX * NY; ++i) {
+    // 初始条件: u(x, y, z, 0) = 0
+    for (int i = 0; i < NX * NY * NZ; ++i) {
         u_curr[i] = 0.0;
     }
 
     // 边界条件函数
     auto apply_boundary = [&]() {
-        // u(0, y, t) = 100 (左边界)
+        // u(0, y, z, t) = 100 (左面)
         for (int j = 0; j < NY; ++j) {
-            u_curr[0 * NY + j] = 100.0;
+            for (int k = 0; k < NZ; ++k) {
+                u_curr[0 * NY * NZ + j * NZ + k] = 100.0;
+            }
         }
-        // u(2000, y, t) = 0 (右边界)
+        // u(400, y, z, t) = 0 (右面)
         for (int j = 0; j < NY; ++j) {
-            u_curr[(NX - 1) * NY + j] = 0.0;
+            for (int k = 0; k < NZ; ++k) {
+                u_curr[(NX - 1) * NY * NZ + j * NZ + k] = 0.0;
+            }
         }
-        // u(x, 0, t) = 100 (下边界)
+        // u(x, 0, z, t) = 100 (前面)
         for (int i = 0; i < NX; ++i) {
-            u_curr[i * NY + 0] = 100.0;
+            for (int k = 0; k < NZ; ++k) {
+                u_curr[i * NY * NZ + 0 * NZ + k] = 100.0;
+            }
         }
-        // u(x, 2000, t) = 0 (上边界)
+        // u(x, 400, z, t) = 0 (后面)
         for (int i = 0; i < NX; ++i) {
-            u_curr[i * NY + (NY - 1)] = 0.0;
+            for (int k = 0; k < NZ; ++k) {
+                u_curr[i * NY * NZ + (NY - 1) * NZ + k] = 0.0;
+            }
+        }
+        // u(x, y, 0, t) = 100 (底面)
+        for (int i = 0; i < NX; ++i) {
+            for (int j = 0; j < NY; ++j) {
+                u_curr[i * NY * NZ + j * NZ + 0] = 100.0;
+            }
+        }
+        // u(x, y, 400, t) = 0 (顶面)
+        for (int i = 0; i < NX; ++i) {
+            for (int j = 0; j < NY; ++j) {
+                u_curr[i * NY * NZ + j * NZ + (NZ - 1)] = 0.0;
+            }
         }
     };
 
@@ -166,25 +204,31 @@ int main(int argc, char* argv[]) {
     // 系数
     double rx = ALPHA * dt / (dx * dx);
     double ry = ALPHA * dt / (dy * dy);
+    double rz = ALPHA * dt / (dz * dz);
 
     // ========== 时间迭代 ==========
     for (int t = 0; t < NT; ++t) {
         // 计算内部点
 #ifdef USE_OPENMP
-        #pragma omp parallel for schedule(static) collapse(2)
+        #pragma omp parallel for schedule(static) collapse(3)
 #endif
         for (int i = 1; i < NX - 1; ++i) {
             for (int j = 1; j < NY - 1; ++j) {
-                int idx = i * NY + j;
-                double u_center = u_curr[idx];
-                double u_left = u_curr[(i - 1) * NY + j];
-                double u_right = u_curr[(i + 1) * NY + j];
-                double u_down = u_curr[i * NY + (j - 1)];
-                double u_up = u_curr[i * NY + (j + 1)];
+                for (int k = 1; k < NZ - 1; ++k) {
+                    int idx = i * NY * NZ + j * NZ + k;
+                    double u_center = u_curr[idx];
+                    double u_left = u_curr[(i - 1) * NY * NZ + j * NZ + k];
+                    double u_right = u_curr[(i + 1) * NY * NZ + j * NZ + k];
+                    double u_front = u_curr[i * NY * NZ + (j - 1) * NZ + k];
+                    double u_back = u_curr[i * NY * NZ + (j + 1) * NZ + k];
+                    double u_bottom = u_curr[i * NY * NZ + j * NZ + (k - 1)];
+                    double u_top = u_curr[i * NY * NZ + j * NZ + (k + 1)];
 
-                // 二阶中心差分
-                u_next[idx] = u_center + rx * (u_left + u_right - 2.0 * u_center)
-                                      + ry * (u_down + u_up - 2.0 * u_center);
+                    // 二阶中心差分 (3D)
+                    u_next[idx] = u_center + rx * (u_left + u_right - 2.0 * u_center)
+                                        + ry * (u_front + u_back - 2.0 * u_center)
+                                        + rz * (u_bottom + u_top - 2.0 * u_center);
+                }
             }
         }
 
@@ -203,7 +247,7 @@ int main(int argc, char* argv[]) {
     // ========== 输出 HDF5 文件 ==========
     auto t_output_start = Clock::now();
 
-    if (!write_hdf5(output_file, u_curr, coord_x, coord_y)) {
+    if (!write_hdf5(output_file, u_curr, coord_x, coord_y, coord_z)) {
         std::fprintf(stderr, "Error: Failed to write HDF5 file\n");
         return 1;
     }

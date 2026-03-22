@@ -1,0 +1,46 @@
+# 2D对流扩散方程
+# 方程: ∂u/∂t + vx*∂u/∂x + vy*∂u/∂y = α*(∂²u/∂x² + ∂²u/∂y²)
+# 描述: 模拟二维流体中的标量输运（对流+扩散）
+
+declarations {
+    x[0,2000,2001];
+    y[0,2000,2001];
+    t[0,250,1001];
+}
+
+equations {
+    # 对流扩散方程（扩散系数 α=0.3，对流速度 vx=0.5, vy=0.3）
+    diff(u(x,y,t),t,1)=0.3*(diff(u(x,y,t),x,2)+diff(u(x,y,t),y,2))-0.5*diff(u(x,y,t),x,1)-0.3*diff(u(x,y,t),y,1);
+
+    # x方向二阶空间导数（扩散项）
+    diff(u(x,y,t),x,2)=(u(x-1,y,t)+u(x+1,y,t)-2*u(x,y,t))/delta(x,2);
+
+    # y方向二阶空间导数（扩散项）
+    diff(u(x,y,t),y,2)=(u(x,y-1,t)+u(x,y+1,t)-2*u(x,y,t))/delta(y,2);
+
+    # x方向一阶空间导数（对流项，迎风格式，vx=0.5>0用向后差分）
+    diff(u(x,y,t),x,1)=(u(x,y,t)-u(x-1,y,t))/delta(x,1);
+
+    # y方向一阶空间导数（对流项，迎风格式，vy=0.3>0用向后差分）
+    diff(u(x,y,t),y,1)=(u(x,y,t)-u(x,y-1,t))/delta(y,1);
+
+    # 从时间导数更新到下一时间步
+    u(x,y,t+1) = u(x,y,t) + diff(u(x,y,t),t,1) * delta(t,1);
+
+    # 初始条件: 中心高斯分布
+    u(x,y,0)=100*exp(-((x-1000)*(x-1000)+(y-1000)*(y-1000))/50000);
+
+    # 边界条件: 入流边界为0，出流边界自然流出
+    u(0,y,t)=0;
+    u(2000,y,t)=u(1999,y,t);
+    u(x,0,t)=0;
+    u(x,2000,t)=u(x,1999,t);
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,y,t)";
+    timeVar:"t";
+}

@@ -1,0 +1,46 @@
+# 3D热传导方程 - 基础示例
+# 方程: ∂u/∂t = α * (∂²u/∂x² + ∂²u/∂y² + ∂²u/∂z²)
+# 描述: 模拟三维立方体中的热传导
+
+declarations {
+    x[0,400,401];
+    y[0,400,401];
+    z[0,400,401];
+    t[0,100,101];
+}
+
+equations {
+    # 热传导方程（热扩散系数 α=0.15）
+    diff(u(x,y,z,t),t,1)=0.15*(diff(u(x,y,z,t),x,2)+diff(u(x,y,z,t),y,2)+diff(u(x,y,z,t),z,2));
+
+    # x方向二阶空间导数
+    diff(u(x,y,z,t),x,2)=(u(x-1,y,z,t)+u(x+1,y,z,t)-2*u(x,y,z,t))/delta(x,2);
+
+    # y方向二阶空间导数
+    diff(u(x,y,z,t),y,2)=(u(x,y-1,z,t)+u(x,y+1,z,t)-2*u(x,y,z,t))/delta(y,2);
+
+    # z方向二阶空间导数
+    diff(u(x,y,z,t),z,2)=(u(x,y,z-1,t)+u(x,y,z+1,t)-2*u(x,y,z,t))/delta(z,2);
+
+    # 从时间导数更新到下一时间步
+    u(x,y,z,t+1) = u(x,y,z,t) + diff(u(x,y,z,t),t,1) * delta(t,1);
+
+    # 初始条件: 整个立方体初始温度为0
+    u(x,y,z,0)=0;
+
+    # 边界条件: 左前下面温度为100，右后上面温度为0
+    u(0,y,z,t)=100;
+    u(400,y,z,t)=0;
+    u(x,0,z,t)=100;
+    u(x,400,z,t)=0;
+    u(x,y,0,t)=100;
+    u(x,y,400,t)=0;
+}
+
+options {
+    mode:"time-pde";
+    method:"FDM";
+    precision:-6;
+    function:"u(x,y,z,t)";
+    timeVar:"t";
+}
