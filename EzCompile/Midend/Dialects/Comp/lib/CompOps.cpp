@@ -246,4 +246,15 @@ mlir::LogicalResult DeltaOp::verify() {
 	return mlir::success();
 }
 
+mlir::LogicalResult LoadOp::verify() {
+    // 检查所有索引是否为 index 类型
+    for (auto idx : getIndices()) {
+        if (!llvm::isa<mlir::IndexType>(idx.getType())) {
+            return emitOpError("all indices must be of index type");
+        }
+    }
+
+    return mlir::success();
+}
+
 }

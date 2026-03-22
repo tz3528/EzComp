@@ -278,3 +278,20 @@ def Comp_CallOp : Comp_Op<"call", [Pure]> {
     let assemblyFormat = "$callee `(` $args `)` attr-dict `:` functional-type($args, $result)";
     let hasVerifier = 1;
 }
+
+// %v = comp.load %u[%ix, %n] : (!comp.field<f64>, index, index) -> f64
+
+def LoadOp : Comp_Op<"load", [Pure]> {
+    let summary = "Load field value at given indices.";
+
+    let arguments = (ins
+        Comp_FieldType:$field,
+        Variadic<Index>:$indices
+    );
+
+    let results = (outs F64:$result);
+
+    let assemblyFormat = "$field `[` $indices `]` attr-dict `:` functional-type(operands, results)";
+
+    let hasVerifier = 1; // indices 数量必须与 field 维度数量匹配
+}

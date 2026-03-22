@@ -21,6 +21,7 @@ void LowerToBase(mlir::OpPassManager &pm) {
     pm.addPass(createLowerCompCallPass());
     pm.addPass(createLowerCompPointsPass());
     pm.addPass(createLowerCompFieldPass());
+    pm.addPass(createLowerCompLoadPass());
     pm.addPass(createLowerCompApplyInitPass());
     pm.addPass(createLowerCompDirichletPass());
     pm.addPass(createLowerCompForTimePass());

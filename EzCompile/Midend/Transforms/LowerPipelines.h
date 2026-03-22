@@ -74,6 +74,7 @@ std::unique_ptr<mlir::Pass> createLowerCompSolvePass();
 std::unique_ptr<mlir::Pass> createLowerCompProblemPass();
 std::unique_ptr<mlir::Pass> createLowerCompCallPass();
 std::unique_ptr<mlir::Pass> createLowerCompDeltaPass();
+std::unique_ptr<mlir::Pass> createLowerCompLoadPass();
 
 void LowerToBase(mlir::OpPassManager &pm);
 void AffineToSCF(mlir::OpPassManager &pm);

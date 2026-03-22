@@ -128,6 +128,8 @@ private:
 
 	llvm::StringMap<mlir::Value> eqValue;			// 根据函数的完整文本找到对应的句柄
 
+	mlir::Value field;
+
 	/// 时间循环上下文
 	struct TimeLoopCtx {
 		comp::ForTimeOp loop;			// 循环操作符

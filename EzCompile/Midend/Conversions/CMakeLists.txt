@@ -8,6 +8,7 @@ target_sources(Midend PRIVATE
         LowerCompDirichlet.cpp
         LowerCompField.cpp
         LowerCompForTime.cpp
+        LowerCompLoad.cpp
         LowerCompPoints.cpp
         LowerCompProblem.cpp
         LowerCompSolve.cpp

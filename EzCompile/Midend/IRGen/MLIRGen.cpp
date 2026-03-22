@@ -108,7 +108,7 @@ mlir::FailureOr<comp::ProblemOp> MLIRGen::genProblem() {
 	if (mlir::failed(fieldOr)) {
 		return mlir::failure();
 	}
-	mlir::Value field = *fieldOr;
+	field = *fieldOr;
 
 	// 5. 生成求解流程（初始化 → 边界条件 → 时间步进）
 	if (mlir::failed(genSolve(field))) {
@@ -717,8 +717,34 @@ mlir::FailureOr<mlir::Value> MLIRGen::genCallExpr(const CallExprAST* expr) {
 	// 2. 如果是中间变量引用，返回缓存的计算结果
 	// 3. 否则生成外部函数调用
 	if (name == sema->target.func) {
-		auto shift_info = sema->stencil_info.call_info.find(expr)->second;
-		return shiftInfoEnv[shift_info];
+		auto it = sema->stencil_info.call_info.find(expr);
+		if (it != sema->stencil_info.call_info.end()) {
+			return shiftInfoEnv[it->second];
+		}
+
+		llvm::SmallVector<mlir::Value, 4> indices;
+		for (auto & arg :expr->getArgs()) {
+			auto tmp = arg.get();
+			if(auto var = llvm::dyn_cast<VarRefExprAST>(tmp)) {
+				auto id = sema->st.lookup(var->getName().str())->id;
+				if (id == sema->target.timeDim) {
+					indices.insert(indices.begin(), dimIndexEnv[id]);
+				} else {
+					indices.emplace_back(dimIndexEnv[id]);
+				}
+			}
+			else {
+				auto valOr = genExpr(arg.get());
+				if (mlir::failed(valOr)) return mlir::failure();
+				mlir::Value val = *valOr;
+				// 确保索引是 index 类型
+				if (!llvm::isa<mlir::IndexType>(val.getType())) {
+					val = mlir::arith::IndexCastOp::create(builder, loc, builder.getIndexType(), val);
+				}
+				indices.emplace_back(val);
+			}
+		}
+		return comp::LoadOp::create(builder, loc, f64Ty, field, indices).getResult();
 	}
 	else if (eqValue.find(expr->getSourceText()) != eqValue.end()) {
 		return eqValue[expr->getSourceText()];
