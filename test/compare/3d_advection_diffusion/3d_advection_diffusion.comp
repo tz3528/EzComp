@@ -3,53 +3,53 @@
 # 描述: 模拟三维流体中的标量输运（对流+扩散）
 
 declarations {
+    t[0,50,101];
     x[0,400,401];
     y[0,400,401];
     z[0,400,401];
-    t[0,100,101];
 }
 
 equations {
     # 对流扩散方程（扩散系数 α=0.1，对流速度 vx=0.4, vy=0.3, vz=0.2）
-    diff(u(x,y,z,t),t,1)=0.1*(diff(u(x,y,z,t),x,2)+diff(u(x,y,z,t),y,2)+diff(u(x,y,z,t),z,2))-0.4*diff(u(x,y,z,t),x,1)-0.3*diff(u(x,y,z,t),y,1)-0.2*diff(u(x,y,z,t),z,1);
+    diff(u(t,x,y,z),t,1)=0.1*(diff(u(t,x,y,z),x,2)+diff(u(t,x,y,z),y,2)+diff(u(t,x,y,z),z,2))-0.4*diff(u(t,x,y,z),x,1)-0.3*diff(u(t,x,y,z),y,1)-0.2*diff(u(t,x,y,z),z,1);
 
     # x方向二阶空间导数（扩散项）
-    diff(u(x,y,z,t),x,2)=(u(x-1,y,z,t)+u(x+1,y,z,t)-2*u(x,y,z,t))/delta(x,2);
+    diff(u(t,x,y,z),x,2)=(u(t,x-1,y,z)+u(t,x+1,y,z)-2*u(t,x,y,z))/delta(x,2);
 
     # y方向二阶空间导数（扩散项）
-    diff(u(x,y,z,t),y,2)=(u(x,y-1,z,t)+u(x,y+1,z,t)-2*u(x,y,z,t))/delta(y,2);
+    diff(u(t,x,y,z),y,2)=(u(t,x,y-1,z)+u(t,x,y+1,z)-2*u(t,x,y,z))/delta(y,2);
 
     # z方向二阶空间导数（扩散项）
-    diff(u(x,y,z,t),z,2)=(u(x,y,z-1,t)+u(x,y,z+1,t)-2*u(x,y,z,t))/delta(z,2);
+    diff(u(t,x,y,z),z,2)=(u(t,x,y,z-1)+u(t,x,y,z+1)-2*u(t,x,y,z))/delta(z,2);
 
-    # x方向一阶空间导数（对流项，中心差分）
-    diff(u(x,y,z,t),x,1)=(u(x+1,y,z,t)-u(x-1,y,z,t))/(2*delta(x,1));
+    # x方向一阶空间导数（对流项，迎风格式，vx=0.4>0）
+    diff(u(t,x,y,z),x,1)=(u(t,x,y,z)-u(t,x-1,y,z))/delta(x,1);
 
-    # y方向一阶空间导数（对流项，中心差分）
-    diff(u(x,y,z,t),y,1)=(u(x,y+1,z,t)-u(x,y-1,z,t))/(2*delta(y,1));
+    # y方向一阶空间导数（对流项，迎风格式，vy=0.3>0）
+    diff(u(t,x,y,z),y,1)=(u(t,x,y,z)-u(t,x,y-1,z))/delta(y,1);
 
-    # z方向一阶空间导数（对流项，中心差分）
-    diff(u(x,y,z,t),z,1)=(u(x,y,z+1,t)-u(x,y,z-1,t))/(2*delta(z,1));
+    # z方向一阶空间导数（对流项，迎风格式，vz=0.2>0）
+    diff(u(t,x,y,z),z,1)=(u(t,x,y,z)-u(t,x,y,z-1))/delta(z,1);
 
     # 从时间导数更新到下一时间步
-    u(x,y,z,t+1) = u(x,y,z,t) + diff(u(x,y,z,t),t,1) * delta(t,1);
+    u(t+1,x,y,z) = u(t,x,y,z) + diff(u(t,x,y,z),t,1) * delta(t,1);
 
     # 初始条件: 中心高斯分布
-    u(x,y,z,0)=100*exp(-((x-200)*(x-200)+(y-200)*(y-200)+(z-200)*(z-200))/10000);
+    u(0,x,y,z)=100*exp(-((x-200)*(x-200)+(y-200)*(y-200)+(z-200)*(z-200))/10000);
 
     # 边界条件: 入流边界为0，出流边界自然流出
-    u(0,y,z,t)=0;
-    u(400,y,z,t)=u(399,y,z,t);
-    u(x,0,z,t)=0;
-    u(x,400,z,t)=u(x,399,z,t);
-    u(x,y,0,t)=0;
-    u(x,y,400,t)=u(x,y,399,t);
+    u(t,0,y,z)=0;
+    u(t,400,y,z)=u(t,399,y,z);
+    u(t,x,0,z)=0;
+    u(t,x,400,z)=u(t,x,399,z);
+    u(t,x,y,0)=0;
+    u(t,x,y,400)=u(t,x,y,399);
 }
 
 options {
     mode:"time-pde";
     method:"FDM";
     precision:-6;
-    function:"u(x,y,z,t)";
+    function:"u(t,x,y,z)";
     timeVar:"t";
 }

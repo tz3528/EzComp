@@ -122,12 +122,7 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 
 		// 降级 sample
 		mlir::SmallVector<mlir::Value, 8> indices;
-		// 创建 affine map: (d0) -> (d0 mod 2)
-		mlir::AffineMap mod2Map = mlir::AffineMap::get(
-			/*dimCount=*/1, /*symbolCount=*/0, rewriter.getAffineDimExpr(0) % 2);
-		mlir::Value time_var = mlir::affine::AffineApplyOp::create(
-			rewriter, loc, mod2Map, mlir::ValueRange{op.getAtTime()});
-		indices.emplace_back(time_var);
+		indices.emplace_back(op.getAtTime());
 		for (auto arg : argValues) {
 			indices.push_back(arg);
 		}

@@ -379,13 +379,18 @@ mlir::LogicalResult MLIRGen::genDirichlet(mlir::Value field) {
 mlir::LogicalResult MLIRGen::genForTime(mlir::Value field, mlir::Value timePoints) {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
 
-	mlir::Value c0 = mlir::arith::ConstantIndexOp::create(builder, loc, 0);
 	mlir::Value c1 = mlir::arith::ConstantIndexOp::create(builder, loc, 1);
 
-	mlir::Value ub = mlir::arith::SubIOp::create(builder, loc, timePoints, c1);
+	// 根据 initLayers 确定循环起始点
+	std::string err;
+	int64_t initLayers = *pm.sema->options.getInt("initLayers", err);
+	mlir::Value lb = mlir::arith::ConstantIndexOp::create(builder, loc, initLayers - 1);
+	// ub = timePoints，因为 AffineForOp 是半开区间 [lb, ub)
+	// 循环范围为 [initLayers-1, timePoints)，即 t = initLayers-1 到 timePoints-1
+	mlir::Value ub = timePoints;
 
-	// 1. 创建时间循环（从 0 到 timePoints-1）
-	auto forOp = comp::ForTimeOp::create(builder, loc, c0, ub, c1);
+	// 1. 创建时间循环（从 initLayers-1 到 timePoints-1）
+	auto forOp = comp::ForTimeOp::create(builder, loc, lb, ub, c1);
 
 	mlir::Region& r = forOp.getBody();
 	auto* body = new mlir::Block();
@@ -561,13 +566,25 @@ mlir::FailureOr<mlir::Value> MLIRGen::genFloatExpr(const FloatExprAST* expr) {
 
 mlir::FailureOr<mlir::Value> MLIRGen::genVarRefExpr(const VarRefExprAST* expr) {
 	mlir::Location loc = mlir::UnknownLoc::get(&context);
-	auto id = sema->st.lookup(expr->getName().str())->id;
+	std::string name = expr->getName().str();
 
-	auto it = dimCoordEnv.find(id);
-	if (it == dimCoordEnv.end()) {
-		return mlir::emitError(loc, expr->getName().str() + " not have a corresponding comp.coord");
+	// 1. 先查 eqValue（中间变量，如 d4x, bilaplacian）
+	auto itEq = eqValue.find(name);
+	if (itEq != eqValue.end()) {
+		return itEq->second;
 	}
-	return dimCoordEnv[id];
+
+	// 2. 再查符号表（维度变量，如 t, x, y）
+	auto sym = sema->st.lookup(name);
+	if (!sym) {
+		return mlir::emitError(loc, "unknown variable: " + name);
+	}
+
+	auto it = dimCoordEnv.find(sym->id);
+	if (it == dimCoordEnv.end()) {
+		return mlir::emitError(loc, name + " not have a corresponding comp.coord");
+	}
+	return it->second;
 }
 
 mlir::FailureOr<mlir::Value> MLIRGen::genUnaryExpr(const UnaryExprAST* expr) {

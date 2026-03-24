@@ -184,7 +184,7 @@ int main(int argc, char* argv[]) {
     for (int t = 0; t < NT; ++t) {
         // 计算内部点
 #ifdef USE_OPENMP
-        #pragma omp parallel for schedule(static) collapse(2)
+        #pragma omp parallel for schedule(static)
 #endif
         for (int i = 1; i < NX - 1; ++i) {
             for (int j = 1; j < NY - 1; ++j) {

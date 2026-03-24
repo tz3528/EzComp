@@ -79,6 +79,8 @@ inline mlir::Value lowerCoord(mlir::OpBuilder& b, mlir::Location loc, mlir::Oper
 }
 
 /// 降级 sample 操作：对 memref 应用偏移后加载
+/// 第一个维度为时间维度，使用 (d0 + shift) mod 2
+/// 其他维度为空间维度，使用 (d0 + shift)
 inline mlir::Value lowerSample(mlir::OpBuilder& b, mlir::Location loc,
                                comp::SampleOp sampleOp,
                                mlir::ValueRange spatialIndices) {
@@ -100,18 +102,26 @@ inline mlir::Value lowerSample(mlir::OpBuilder& b, mlir::Location loc,
     }
 
     // 应用偏移量到各维度索引
-    for (auto it : llvm::zip(spatialIndices, shifts)) {
-        mlir::Value iv = std::get<0>(it);
-        int64_t shiftVal = std::get<1>(it);
-        if (shiftVal == 0) {
+    for (size_t i = 0; i < spatialIndices.size(); ++i) {
+        mlir::Value iv = spatialIndices[i];
+        int64_t shiftVal = shifts[i];
+
+        if (i == 0) {
+            // 时间维度：(d0 + shift) mod 2
+            mlir::AffineMap timeMap = mlir::AffineMap::get(
+                1, 0, (b.getAffineDimExpr(0) + shiftVal) % 2);
+            mlir::Value timeIdx = mlir::affine::AffineApplyOp::create(
+                b, loc, timeMap, mlir::ValueRange{iv});
+            accessIndices.push_back(timeIdx);
+        } else if (shiftVal == 0) {
             accessIndices.push_back(iv);
         } else {
-        	// 使用 affine map: (d0) -> (d0 + shift)
-        	mlir::AffineMap shiftMap = mlir::AffineMap::get(
-				1, 0, b.getAffineDimExpr(0) + shiftVal);
-        	mlir::Value shiftedIv = mlir::affine::AffineApplyOp::create(
-				b, loc, shiftMap, mlir::ValueRange{iv});
-        	accessIndices.push_back(shiftedIv);
+            // 空间维度：(d0 + shift)
+            mlir::AffineMap shiftMap = mlir::AffineMap::get(
+                1, 0, b.getAffineDimExpr(0) + shiftVal);
+            mlir::Value shiftedIv = mlir::affine::AffineApplyOp::create(
+                b, loc, shiftMap, mlir::ValueRange{iv});
+            accessIndices.push_back(shiftedIv);
         }
     }
 

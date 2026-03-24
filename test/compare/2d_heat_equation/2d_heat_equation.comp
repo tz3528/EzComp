@@ -3,38 +3,39 @@
 # 描述: 模拟二维平板上的热传导
 
 declarations {
+    t[0,500,1001];
     x[0,2000,2001];
     y[0,2000,2001];
-    t[0,500,1001];
 }
 
 equations {
     # 热传导方程（热扩散系数 α=0.5）
-    diff(u(x,y,t),t,1)=0.5*(diff(u(x,y,t),x,2)+diff(u(x,y,t),y,2));
+    diff(u(t,x,y),t,1)=0.5*(diff(u(t,x,y),x,2)+diff(u(t,x,y),y,2));
 
     # x方向二阶空间导数
-    diff(u(x,y,t),x,2)=(u(x-1,y,t)+u(x+1,y,t)-2*u(x,y,t))/delta(x,2);
+    diff(u(t,x,y),x,2)=(u(t,x-1,y)+u(t,x+1,y)-2*u(t,x,y))/delta(x,2);
 
     # y方向二阶空间导数
-    diff(u(x,y,t),y,2)=(u(x,y-1,t)+u(x,y+1,t)-2*u(x,y,t))/delta(y,2);
+    diff(u(t,x,y),y,2)=(u(t,x,y-1)+u(t,x,y+1)-2*u(t,x,y))/delta(y,2);
 
     # 从时间导数更新到下一时间步
-    u(x,y,t+1) = u(x,y,t) + diff(u(x,y,t),t,1) * delta(t,1);
+    u(t+1,x,y) = u(t,x,y) + diff(u(t,x,y),t,1) * delta(t,1);
 
     # 初始条件: 整个平板初始温度为0
-    u(x,y,0)=0;
+    u(0,x,y)=0;
 
     # 边界条件: 左上边界温度为100，右下边界温度为0
-    u(0,y,t)=100;
-    u(2000,y,t)=0;
-    u(x,0,t)=100;
-    u(x,2000,t)=0;
+    u(t,0,y)=100;
+    u(t,2000,y)=0;
+    u(t,x,0)=100;
+    u(t,x,2000)=0;
 }
 
 options {
     mode:"time-pde";
     method:"FDM";
     precision:-6;
-    function:"u(x,y,t)";
+    function:"u(t,x,y)";
     timeVar:"t";
 }
+
