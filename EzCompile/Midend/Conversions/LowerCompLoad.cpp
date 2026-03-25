@@ -51,18 +51,13 @@ struct LoadOpLowering : mlir::OpConversionPattern<comp::LoadOp> {
 			return rewriter.notifyMatchFailure(op, "load must have at least one index");
 		}
 
-		// 3. 对时间维度（第一个索引）应用 mod 2
-		mlir::Value c2 = mlir::arith::ConstantIndexOp::create(rewriter, loc, 2);
-		mlir::Value timeIndex = mlir::arith::RemUIOp::create(rewriter, loc, indices[0], c2);
-
-		// 4. 构建访问索引：[time%2, space_idx1, space_idx2, ...]
+		// 3. 构建访问索引：[time, space_idx1, space_idx2, ...]
 		llvm::SmallVector<mlir::Value, 4> accessIndices;
-		accessIndices.push_back(timeIndex);
-		for (size_t i = 1; i < indices.size(); ++i) {
+		for (size_t i = 0; i < indices.size(); ++i) {
 			accessIndices.push_back(indices[i]);
 		}
 
-		// 5. 生成 memref.load
+		// 4. 生成 memref.load
 		auto load = mlir::memref::LoadOp::create(rewriter, loc, memref, accessIndices);
 
 		rewriter.replaceOp(op, load.getResult());

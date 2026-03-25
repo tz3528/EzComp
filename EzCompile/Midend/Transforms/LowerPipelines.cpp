@@ -62,4 +62,12 @@ void ToLLVM(mlir::OpPassManager &pm) {
     pm.addPass(mlir::createCSEPass());
 }
 
+void AdjustTimeIndex(mlir::OpPassManager &pm) {
+    pm.addPass(createAdjustTimeIndexPass());
+    auto &fpm = pm.nest<mlir::func::FuncOp>();
+    fpm.addPass(mlir::affine::createAffineLoopInvariantCodeMotionPass());
+    fpm.addPass(mlir::createCanonicalizerPass());
+    fpm.addPass(mlir::createCSEPass());
+}
+
 } // namespace ezcompile

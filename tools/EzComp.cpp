@@ -183,6 +183,8 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
 	        LoopParallelize(pm);
 	    }
 
+	    AdjustTimeIndex(pm);
+
 	    if (opt.enableAffineVevtorize.getValue()) {
 	        AffineVectorize(pm);
 	        LoopPeeling(pm);

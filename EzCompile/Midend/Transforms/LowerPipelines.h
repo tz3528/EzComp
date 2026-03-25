@@ -75,11 +75,13 @@ std::unique_ptr<mlir::Pass> createLowerCompProblemPass();
 std::unique_ptr<mlir::Pass> createLowerCompCallPass();
 std::unique_ptr<mlir::Pass> createLowerCompDeltaPass();
 std::unique_ptr<mlir::Pass> createLowerCompLoadPass();
+std::unique_ptr<mlir::Pass> createAdjustTimeIndexPass();
 
 void LowerToBase(mlir::OpPassManager &pm);
 void AffineToSCF(mlir::OpPassManager &pm);
 void SCFToCF(mlir::OpPassManager &pm);
 void ToLLVM(mlir::OpPassManager &pm);
+void AdjustTimeIndex(mlir::OpPassManager &pm);
 
 } // namespace ezcompile
 

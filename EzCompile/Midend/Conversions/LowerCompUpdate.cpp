@@ -143,7 +143,7 @@ struct LowerUpdatePattern : mlir::OpConversionPattern<comp::UpdateOp> {
 
 		// 创建 affine map: (d0) -> ((d0 + 1) mod 2)
 		mlir::AffineMap mod2PlusOneMap = mlir::AffineMap::get(
-			/*dimCount=*/1, /*symbolCount=*/0, (rewriter.getAffineDimExpr(0) + 1) % 2);
+			/*dimCount=*/1, /*symbolCount=*/0, rewriter.getAffineDimExpr(0) + 1);
 		mlir::Value storeTimeVar = mlir::affine::AffineApplyOp::create(
 			rewriter, loc, mod2PlusOneMap, mlir::ValueRange{op.getAtTime()});
 		indices[0] = storeTimeVar;

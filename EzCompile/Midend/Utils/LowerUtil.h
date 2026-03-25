@@ -106,17 +106,10 @@ inline mlir::Value lowerSample(mlir::OpBuilder& b, mlir::Location loc,
         mlir::Value iv = spatialIndices[i];
         int64_t shiftVal = shifts[i];
 
-        if (i == 0) {
-            // 时间维度：(d0 + shift) mod 2
-            mlir::AffineMap timeMap = mlir::AffineMap::get(
-                1, 0, (b.getAffineDimExpr(0) + shiftVal) % 2);
-            mlir::Value timeIdx = mlir::affine::AffineApplyOp::create(
-                b, loc, timeMap, mlir::ValueRange{iv});
-            accessIndices.push_back(timeIdx);
-        } else if (shiftVal == 0) {
+        if (shiftVal == 0) {
             accessIndices.push_back(iv);
         } else {
-            // 空间维度：(d0 + shift)
+            // (d0 + shift)
             mlir::AffineMap shiftMap = mlir::AffineMap::get(
                 1, 0, b.getAffineDimExpr(0) + shiftVal);
             mlir::Value shiftedIv = mlir::affine::AffineApplyOp::create(
