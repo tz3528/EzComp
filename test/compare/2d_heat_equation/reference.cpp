@@ -26,7 +26,7 @@ constexpr double X_UPPER = 2000.0;
 constexpr double Y_LOWER = 0.0;
 constexpr double Y_UPPER = 2000.0;
 
-constexpr double ALPHA = 0.5;  // 热扩散系数
+constexpr double ALPHA = 0.25;  // 热扩散系数
 
 // 格式化输出用时
 static void print_timer(const char* label, const char* tag, long long ns) {
@@ -122,7 +122,7 @@ int main(int argc, char* argv[]) {
 
     double dx = (X_UPPER - X_LOWER) / (NX - 1);
     double dy = (Y_UPPER - Y_LOWER) / (NY - 1);
-    double dt = 0.5;
+    double dt = 1.0;
 
     for (int i = 0; i < NX; ++i) {
         coord_x[i] = X_LOWER + i * dx;
