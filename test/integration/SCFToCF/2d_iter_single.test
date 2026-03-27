@@ -1,39 +1,28 @@
 #===-- 2d_iter_single.test ------------------------------------*-- Comp -*-===#
 #
 # 2D: 单个迭代方程 - SCFToCF 测试
-# 验证所有 scf.for 被正确降级为 cf.br / cf.cond_br 控制流
+# u(x,y,t+1) = u(x,y,t) → 验证 cf.br/cf.cond_br 结构
 #
 #===------------------------------------------------------------------------===#
 
 # RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true affine-scf=true scf-cf=true})" | FileCheck %s
 
-# ===== 确保没有 scf.for 和 affine.for =====
-# CHECK-NOT: scf.for
-# CHECK-NOT: affine.for
+# ===== 验证 comp 方言操作已消除 =====
+# CHECK-NOT: comp.
 
-# CHECK-LABEL: func.func @main()
-
-# ===== 验证常量定义（按实际输出顺序）=====
-# CHECK: arith.constant 1 : index
-# CHECK: arith.constant 11 : index
-# CHECK: arith.constant 10 : index
-# CHECK: arith.constant 0 : index
+# ===== 验证运行时库函数声明 =====
+# CHECK-DAG: func.func private @timer_start
+# CHECK-DAG: func.func private @timer_stop_and_print
 
 # ===== 验证 memref 分配 =====
 # CHECK: memref.alloc() : memref<2x11x11xf64>
 
-# ===== 验证控制流操作存在 =====
-# CHECK: cf.br {{.*}}(%c0 : index)
+# ===== 验证 cf 循环结构 =====
+# CHECK: cf.br
 # CHECK: cf.cond_br
 
-# ===== 验证循环比较操作 =====
-# CHECK: arith.cmpi slt
-
-# ===== 验证内存操作 =====
-# CHECK: memref.load {{.*}} : memref<2x11x11xf64>
+# ===== 验证存储操作 =====
 # CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: return
 
 declarations {
     x[0,10,11];

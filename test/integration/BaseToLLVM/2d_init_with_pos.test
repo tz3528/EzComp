@@ -1,40 +1,31 @@
 #===-- 2d_init_with_pos.test ----------------------------------*-- Comp -*-===#
 #
 # 2D: 初始化方程右侧有位置信息 - BaseToLLVM 测试
-# u(x,y,0) = x + y → 验证二维坐标计算和类型转换
+# u(x,y,0) = x + y → coord 降级为坐标计算
 #
 #===------------------------------------------------------------------------===#
 
 # RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true base-llvm=true})" | FileCheck %s
 
-# ===== 验证 LLVM 函数入口 =====
-# CHECK-LABEL: llvm.func @main()
+# ===== 验证 comp 方言操作已消除 =====
+# CHECK-NOT: comp.
 
-# ===== 验证常量（函数开头）=====
-# CHECK: llvm.mlir.constant
+# ===== 验证运行时库函数声明 =====
+# CHECK-DAG: llvm.func @timer_start
+# CHECK-DAG: llvm.func @timer_stop_and_print
+# CHECK-DAG: llvm.func @malloc
 
-# ===== 验证内存分配（malloc）=====
+# ===== 验证内存分配 =====
 # CHECK: llvm.call @malloc
 
-# ===== 验证类型转换：sitofp =====
-# CHECK: llvm.sitofp {{.*}} : i64 to f64
-
-# ===== 验证浮点加法 =====
-# CHECK: llvm.fadd
-
-# ===== 验证控制流操作 =====
-# CHECK: llvm.br
+# ===== 验证循环结构 =====
 # CHECK: llvm.cond_br
 
-# ===== 验证比较操作 =====
-# CHECK: llvm.icmp "slt"
-
-# ===== 验证内存操作 =====
-# CHECK: llvm.load
-# CHECK: llvm.store
-
-# ===== 验证返回 =====
-# CHECK: llvm.return
+# ===== 验证坐标计算 =====
+# CHECK: llvm.sitofp
+# CHECK: llvm.fdiv
+# CHECK: llvm.fmul
+# CHECK: llvm.fadd
 
 declarations {
     x[0,10,11];

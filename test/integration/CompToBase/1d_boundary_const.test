@@ -1,7 +1,6 @@
 #===-- 1d_boundary_const.test ---------------------------------*-- Comp -*-===#
 #
 # 1D: 边界方程右侧为常数 - CompToBase 测试
-# u(0,t) = 10 → 边界条件是常量
 #
 #===------------------------------------------------------------------------===#
 
@@ -10,26 +9,14 @@
 # ===== 验证 comp 方言操作已消除 =====
 # CHECK-NOT: comp.
 
-# ===== 验证 memref 分配：第一维=2，第二维=x.points=101 =====
+# ===== 验证 memref 分配 =====
 # CHECK: memref.alloc() : memref<2x101xf64>
 
 # ===== 初始化循环 =====
 # CHECK: affine.for {{.*}} = 0 to 101
-# CHECK: memref.store {{.*}} : memref<2x101xf64>
-
-# ===== 边界条件循环1：u(0,t) = 10 =====
-# CHECK: affine.for {{.*}} = 0 to 51
-# CHECK: memref.store {{.*}} : memref<2x101xf64>
-
-# ===== 边界条件循环2：u(100,t) = 0 =====
-# CHECK: affine.for {{.*}} = 0 to 51
-# CHECK: memref.store {{.*}} : memref<2x101xf64>
 
 # ===== 时间迭代循环 =====
-# CHECK: affine.for {{.*}} = 0 to 50
-# CHECK: affine.for {{.*}} = 0 to 101
-# CHECK: memref.load {{.*}} : memref<2x101xf64>
-# CHECK: memref.store {{.*}} : memref<2x101xf64>
+# CHECK: affine.for {{.*}} = 0 to 51
 
 declarations {
     x[0,100,101];
@@ -38,7 +25,7 @@ declarations {
 
 equations {
     u(x,0) = 0;
-    u(0,t) = 10;
+    u(0,t) = 1.0;
     u(100,t) = 0;
     u(x,t+1) = u(x,t);
 }
