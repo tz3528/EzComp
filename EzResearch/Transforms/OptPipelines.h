@@ -51,18 +51,25 @@ struct OptimizationOptions : mlir::PassPipelineOptions<OptimizationOptions> {
         llvm::cl::desc("parallelize the loop"),
         llvm::cl::init(false)};
 
+    Option<bool> enablePolyhedral{
+        *this, "polyhedral",
+        llvm::cl::desc("polyhedral"),
+        llvm::cl::init(false)};
+
 };
 
 std::unique_ptr<mlir::Pass> createOptBoundaryHoistPass();
 std::unique_ptr<mlir::Pass> createOptLoopPeelingPass();
 std::unique_ptr<mlir::Pass> createOptLoopTilingPass();
 std::unique_ptr<mlir::Pass> createOptLoopParallelizePass();
+std::unique_ptr<mlir::Pass> createOptPolyhedralPass();
 
 void HoistBoundary(mlir::OpPassManager &pm);
 void AffineVectorize(mlir::OpPassManager &pm);
 void LoopPeeling(mlir::OpPassManager &pm);
 void LoopTiling(mlir::OpPassManager &pm);
 void LoopParallelize(mlir::OpPassManager &pm);
+void Polyhedral(mlir::OpPassManager &pm);
 
 }
 

@@ -171,8 +171,12 @@ void buildPipeline(mlir::OpPassManager &pm, const PipelineOptions &opt) {
     //===--------------------------------------------------------------------===//
 	if (opt.enableLowerToBase.getValue() || opt.enableToLLVM.getValue()) {
 	    LowerToBase(pm);
-	    if (opt.enableHoistBoundary.getValue()) {
+	    if (opt.enableHoistBoundary.getValue()||opt.enablePolyhedral.getValue()) {
 	        HoistBoundary(pm);
+	    }
+
+	    if (opt.enablePolyhedral.getValue()) {
+	        Polyhedral(pm);
 	    }
 
 	    if (opt.enableLoopTiling.getValue()) {

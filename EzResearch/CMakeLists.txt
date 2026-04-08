@@ -58,5 +58,6 @@ target_include_directories(EzResearch PUBLIC
 # 5. 添加子模块
 add_subdirectory(Generic)
 add_subdirectory(Parallelize)
+add_subdirectory(Polyhedral)
 add_subdirectory(Tiling)
 add_subdirectory(Transforms)

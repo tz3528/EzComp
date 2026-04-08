@@ -67,3 +67,8 @@ set_target_properties(ezcomp PROPERTIES
         INSTALL_RPATH_USE_LINK_PATH TRUE
         BUILD_WITH_INSTALL_RPATH TRUE
 )
+
+# 显式添加 z3 库的 RPATH
+set_target_properties(ezcomp PROPERTIES
+        INSTALL_RPATH "${CMAKE_SOURCE_DIR}/EzResearch/Polyhedral/z3-install/lib;$ORIGIN/../lib"
+)

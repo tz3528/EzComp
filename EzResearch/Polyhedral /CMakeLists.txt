@@ -1,2 +1,0 @@
-# --- EzResearch/Polyhedral/CMakeLists.txt ---
-

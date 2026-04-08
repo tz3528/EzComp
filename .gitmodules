@@ -4,3 +4,6 @@
 [submodule "EzCompute/IO/hdf5"]
 	path = EzCompute/IO/hdf5
 	url = https://github.com/HDFGroup/hdf5.git
+[submodule "EzResearch/Polyhedral/z3"]
+	path = EzResearch/Polyhedral/z3
+	url = https://github.com/Z3Prover/z3.git
