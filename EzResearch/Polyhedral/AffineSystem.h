@@ -238,6 +238,9 @@ std::vector<AffineInfo> substituteIndices(
 /// 即 d ≥ 0（字典序意义）
 bool isLexicographicallyNonNegative(const std::vector<int64_t>& distance);
 
+/// 检查距离向量是否每个维度均非负
+bool isAllDimensionsNonNegative(const std::vector<int64_t>& distance);
+
 /// 求解依赖是否存在
 /// 在 src_constraint 和 dst_constraint 的约束下，判断是否存在 src 和 dst 访问同一内存的解
 /// 要求存在 X < Y（字典序）使得 src(X) == dst(Y)

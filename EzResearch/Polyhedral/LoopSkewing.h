@@ -23,7 +23,7 @@ namespace ezresearch {
 Matrix SolveSkewingMatrix(PolyhedralInfo polyhedral_info);
 
 /// 检测是否满足约束
-bool checkConstraint(Matrix matrix, std::vector<Dependence> &dependence);
+bool checkConstraint(Matrix &matrix, std::vector<Dependence> &dependence);
 
 /// 计算转换后最大依赖距离（返回字典序最大的距离向量）
 std::vector<int64_t> calculateMaxDependencyDistance(Matrix matrix, std::vector<Dependence> &dependence);

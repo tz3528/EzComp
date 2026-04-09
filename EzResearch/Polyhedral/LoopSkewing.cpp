@@ -131,7 +131,7 @@ Matrix SolveSkewingMatrix(PolyhedralInfo polyhedral_info) {
     return best_transform;
 }
 
-bool checkConstraint(Matrix matrix, std::vector<Dependence> &dependence) {
+bool checkConstraint(Matrix &matrix, std::vector<Dependence> &dependence) {
     // 1. 求逆矩阵 S = T⁻¹
     auto S = getInversionMatrix(matrix);
     if (S.empty()) return false;  // 矩阵不可逆，变换非法
@@ -146,8 +146,8 @@ bool checkConstraint(Matrix matrix, std::vector<Dependence> &dependence) {
 
             // 2b. 检查依赖方向保持
 
-            // 2c. 检查可分块性：d' 字典序非负
-            if (!isLexicographicallyNonNegative(new_distance)) {
+            // 2c. 检查可分块性：d' 的每一维都非负
+            if (!isAllDimensionsNonNegative(new_distance)) {
                 return false;
             }
 
@@ -179,19 +179,19 @@ bool checkConstraint(Matrix matrix, std::vector<Dependence> &dependence) {
 }
 
 bool isLexicographicallyGreater(const std::vector<int64_t>& a, const std::vector<int64_t>& b) {
-    size_t n = std::min(a.size(), b.size());
-    for (size_t i = 0; i < n; ++i) {
-        if (a[i] > b[i]) return true;
-        if (a[i] < b[i]) return false;
+    // 获取两者的最大长度
+    size_t max_len = std::max(a.size(), b.size());
+
+    for (size_t i = 0; i < max_len; ++i) {
+        // 如果越界，隐式当作 0 处理
+        int64_t val_a = (i < a.size()) ? a[i] : 0;
+        int64_t val_b = (i < b.size()) ? b[i] : 0;
+
+        if (val_a > val_b) return true;
+        if (val_a < val_b) return false;
     }
-    // 前缀相等，较长向量在字典序上更大（如果它有额外的正分量）
-    if (a.size() > b.size()) {
-        for (size_t i = n; i < a.size(); ++i) {
-            if (a[i] > 0) return true;
-            if (a[i] < 0) return false;
-        }
-    }
-    return false;  // 相等
+
+    return false; // 完全相等
 }
 
 std::vector<int64_t> solveLexicographicMinDistance(

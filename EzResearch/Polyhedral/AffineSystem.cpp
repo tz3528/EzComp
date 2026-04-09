@@ -226,6 +226,15 @@ bool isLexicographicallyNonNegative(const std::vector<int64_t>& distance) {
     return true;  // 全为零，也算非负
 }
 
+bool isAllDimensionsNonNegative(const std::vector<int64_t>& distance) {
+    for (size_t i = 0; i < distance.size(); ++i) {
+        if (distance[i] < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool SolveDependence(
     std::vector<AffineInfo> &src_constraint,
     std::vector<AffineInfo> &dst_constraint,
