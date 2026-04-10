@@ -37,6 +37,7 @@ void solveDBD(
             ans *= tiling_size[i];
             sum *= (loop_infos[i].ub - loop_infos[i].lb - 1) / tiling_size[i] + 1;
         }
+        ans *= 2;
         ans /= B;
         ans += halo;
 
