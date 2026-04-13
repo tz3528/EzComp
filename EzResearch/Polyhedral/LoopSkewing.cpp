@@ -144,9 +144,7 @@ bool checkConstraint(Matrix &matrix, std::vector<Dependence> &dependence) {
             // 2a. 计算新距离向量 d' = T × distance_vector
             auto new_distance = multiplyMatrixVector(matrix, dep.distance_vector);
 
-            // 2b. 检查依赖方向保持
-
-            // 2c. 检查可分块性：d' 的每一维都非负
+            // 2b. 检查可分块性：d' 的每一维都非负
             if (!isAllDimensionsNonNegative(new_distance)) {
                 return false;
             }
@@ -154,15 +152,15 @@ bool checkConstraint(Matrix &matrix, std::vector<Dependence> &dependence) {
         } else {
             // ===== 非均匀依赖 =====
 
-            // 2d. 用 S 替换访存索引
+            // 2c. 用 S 替换访存索引
             auto new_src_indices = substituteIndices(dep.src_indices, S);
             auto new_dst_indices = substituteIndices(dep.dst_indices, S);
 
-            // 2e. 用 S 替换边界约束
+            // 2d. 用 S 替换边界约束
             auto new_src_constraint = substituteIndices(dep.src_domain, S);
             auto new_dst_constraint = substituteIndices(dep.dst_domain, S);
 
-            // 2f. 在新索引空间求解依赖是否存在
+            // 2e. 在新索引空间求解依赖是否存在
             bool has_dependence = SolveDependence(
                 new_src_constraint, new_dst_constraint,
                 new_src_indices, new_dst_indices);
