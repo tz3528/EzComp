@@ -20,7 +20,7 @@
 constexpr int NX = 401;     // x 方向点数
 constexpr int NY = 401;     // y 方向点数
 constexpr int NZ = 401;     // z 方向点数
-constexpr int NT = 100;     // 时间步数
+constexpr int NT = 50;      // 时间步数
 
 constexpr double X_LOWER = 0.0;
 constexpr double X_UPPER = 400.0;

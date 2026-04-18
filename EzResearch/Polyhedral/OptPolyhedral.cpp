@@ -11,33 +11,40 @@
 //===----------------------------------------------------------------------===//
 
 
+#include <iostream>
+
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/Utils.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 
+#include "DiamondTiling.h"
 #include "LoopSkewing.h"
 #include "PolyhedralInfo.h"
+#include "Utils/CacheUtil.h"
 #include "Utils/QueryUtil.h"
 
 namespace ezresearch {
+
+constexpr uint64_t E = 8;
 
 /// 基于下三角幺模变换矩阵，生成新的循环嵌套并迁移代码
 /// \param builder MLIR OpBuilder
 /// \param loc 代码位置 (Location)
 /// \param old_loops 原始的完美循环嵌套 (从外向内排序)
 /// \param inv_matrix 下三角幺模逆变换矩阵 (key: 原循环层级, value: 仿射表达式信息)
-/// \return 新的最外层循环
-mlir::affine::AffineForOp GenerateNewLoopNests(
+/// \return 所有新生成的循环 (下标越小越外层: [0]=最外层, [depth-1]=最内层)
+std::vector<mlir::affine::AffineForOp> GenerateNewLoopNests(
     mlir::OpBuilder &builder, mlir::Location loc,
     mlir::ArrayRef<mlir::affine::AffineForOp> old_loops,
     const Matrix &inv_matrix) {
 
     int depth = old_loops.size();
-    mlir::SmallVector<mlir::affine::AffineForOp, 4> new_loops;
-    mlir::SmallVector<mlir::Value, 4> new_ivs;
+    std::vector<mlir::affine::AffineForOp> new_loops;
+    std::vector<mlir::Value> new_ivs;
 
     // 用于存储：旧的外层 IV 的 AffineExpr 如何被新的外层 IV 的 AffineExpr 表示
     mlir::SmallVector<mlir::AffineExpr, 4> old_iv_exprs_in_new_ivs;
@@ -164,7 +171,129 @@ mlir::affine::AffineForOp GenerateNewLoopNests(
     mlir::affine::AffineForOp outermost_old_loop = old_loops.front();
     outermost_old_loop.erase();
 
-    return new_loops.front();
+    return new_loops;
+}
+
+mlir::LogicalResult performDiamondTiling(std::vector<mlir::affine::AffineForOp> loopBand,
+                                         std::vector<uint64_t> tilingSizes) {
+    if (loopBand.empty()) return mlir::failure();
+    if (loopBand.size() < tilingSizes.size()) {
+        return loopBand.front().emitError("Tiling sizes count exceeds available loop depth in the band.");
+    }
+
+    int depth = tilingSizes.size();
+    mlir::OpBuilder builder(loopBand.front());
+    mlir::Location loc = loopBand.front().getLoc();
+
+    // 1. 创建 Tile Loops (外层循环)
+    llvm::SmallVector<mlir::Value, 4> tileIVs;
+    mlir::OpBuilder tileBuilder = builder;
+    mlir::IRMapping tileMap; // 用于将旧的 IV 映射到 Tile IV，防止 Dominance 错误
+
+    for (int i = 0; i < depth; ++i) {
+        auto loop = loopBand[i];
+
+        // 动态替换 Operands 中的旧 IV 为对应的 Tile IV
+        llvm::SmallVector<mlir::Value, 4> lbOperands;
+        for (auto op : loop.getLowerBoundOperands()) lbOperands.push_back(tileMap.lookupOrDefault(op));
+
+        llvm::SmallVector<mlir::Value, 4> ubOperands;
+        for (auto op : loop.getUpperBoundOperands()) ubOperands.push_back(tileMap.lookupOrDefault(op));
+
+        auto tileLoop = tileBuilder.create<mlir::affine::AffineForOp>(
+            loc,
+            lbOperands, loop.getLowerBoundMap(),
+            ubOperands, loop.getUpperBoundMap(),
+            tilingSizes[i]
+        );
+
+        tileIVs.push_back(tileLoop.getInductionVar());
+        // 注册映射：后续的 Tile Loop 如果用到这一层的旧 IV，自动替换为当前的 Tile IV
+        tileMap.map(loop.getInductionVar(), tileLoop.getInductionVar());
+
+        tileBuilder.setInsertionPointToStart(tileLoop.getBody());
+    }
+
+    // 2. 创建 Point Loops (内层循环)
+    llvm::SmallVector<mlir::Value, 4> pointIVs;
+    mlir::IRMapping pointMap; // 用于将旧的 IV 映射到 Point IV
+
+    for (int i = 0; i < depth; ++i) {
+        auto loop = loopBand[i];
+        int64_t Ti = tilingSizes[i];
+        mlir::Value it = tileIVs[i];
+
+        // --- 修复：构造内层下界 max(original_LB, it) ---
+        unsigned numOldLBDims = loop.getLowerBoundMap().getNumDims();
+        llvm::SmallVector<mlir::AffineExpr, 2> lbExprs;
+
+        // 1. 放入原始 LB 的表达式 (维度保持原样，完美匹配旧依赖)
+        for (auto expr : loop.getLowerBoundMap().getResults()) {
+            lbExprs.push_back(expr);
+        }
+        // 2. 追加 it 作为全新的最高维度
+        lbExprs.push_back(tileBuilder.getAffineDimExpr(numOldLBDims));
+
+        llvm::SmallVector<mlir::Value, 4> lbOperands;
+        for (auto op : loop.getLowerBoundOperands()) {
+            lbOperands.push_back(pointMap.lookupOrDefault(op));
+        }
+        lbOperands.push_back(it); // 追加 it 到末尾
+
+        auto newLBMap = mlir::AffineMap::get(
+            numOldLBDims + 1,
+            loop.getLowerBoundMap().getNumSymbols(),
+            lbExprs, builder.getContext());
+
+        // --- 修复：构造内层上界 min(original_UB, it + Ti) ---
+        unsigned numOldUBDims = loop.getUpperBoundMap().getNumDims();
+        llvm::SmallVector<mlir::AffineExpr, 2> ubExprs;
+
+        // 1. 放入原始 UB 的表达式
+        for (auto expr : loop.getUpperBoundMap().getResults()) {
+            ubExprs.push_back(expr);
+        }
+        // 2. 追加 it + Ti 作为全新的最高维度
+        ubExprs.push_back(tileBuilder.getAffineDimExpr(numOldUBDims) + Ti);
+
+        llvm::SmallVector<mlir::Value, 4> ubOperands;
+        for (auto op : loop.getUpperBoundOperands()) {
+            ubOperands.push_back(pointMap.lookupOrDefault(op));
+        }
+        ubOperands.push_back(it); // 追加 it 到末尾
+
+        auto newUBMap = mlir::AffineMap::get(
+            numOldUBDims + 1,
+            loop.getUpperBoundMap().getNumSymbols(),
+            ubExprs, builder.getContext());
+
+        // 创建 Point Loop
+        auto pointLoop = tileBuilder.create<mlir::affine::AffineForOp>(
+            loc, lbOperands, newLBMap, ubOperands, newUBMap, 1);
+
+        pointIVs.push_back(pointLoop.getInductionVar());
+        pointMap.map(loop.getInductionVar(), pointLoop.getInductionVar());
+
+        tileBuilder.setInsertionPointToStart(pointLoop.getBody());
+    }
+
+    // 3. 替换 Body 内的残余旧变量并转移 Body
+    auto innerMostLoop = loopBand[depth - 1];
+    auto& innerPointBody = tileBuilder.getBlock()->getOperations();
+    auto& oldBody = innerMostLoop.getBody()->getOperations();
+
+    // 经过 IRMapping 的隔离，这里只会替换掉旧 Loop Body 内部的变量使用，安全无副作用
+    for (int i = 0; i < depth; ++i) {
+        loopBand[i].getInductionVar().replaceAllUsesWith(pointIVs[i]);
+    }
+
+    // 将旧 Body 移动到最内层 Point Loop
+    innerPointBody.splice(innerPointBody.begin(), oldBody, oldBody.begin(), std::prev(oldBody.end()));
+
+    // 4. 安全擦除外层循环树
+    loopBand.front().getOperation()->erase();
+
+    return mlir::success();
 }
 
 struct OptPolyhedralPass : public mlir::PassWrapper<OptPolyhedralPass, mlir::OperationPass<mlir::ModuleOp> > {
@@ -175,12 +304,19 @@ struct OptPolyhedralPass : public mlir::PassWrapper<OptPolyhedralPass, mlir::Ope
     void runOnOperation() override {
         mlir::ModuleOp module = getOperation();
 
+        uint64_t CL;
+        uint64_t C;
+        getTilingCacheParams(CL, C);
+
+        auto B = CL / E; // B表示每条缓存行内的元素数
+        auto M = C / E; // M表示缓存中可容纳的元素数
+
         /// 这里首先对多面体模型进行建模
         /// 然后考虑有哪些类型的优化
         /// 对于已知的倾斜分块而言，需要做的是选取一组满足约束条件的超平面
         /// 然后基于这组超平面，对循环索引进行变换
 
-        module.walk([](mlir::affine::AffineForOp for_op) {
+        module.walk([&](mlir::affine::AffineForOp for_op) {
             // 过滤：只抓取最外层（根部）循环
             if (for_op->getParentOfType<mlir::affine::AffineForOp>()) {
                 return mlir::WalkResult::advance();
@@ -194,6 +330,11 @@ struct OptPolyhedralPass : public mlir::PassWrapper<OptPolyhedralPass, mlir::Ope
             }
 
             PolyhedralInfo polyhedral_info(for_op);
+
+            if (polyhedral_info.id_to_index.size() == 1) {
+                // 此处表明循环只有一层，无需优化
+                return mlir::WalkResult::advance();
+            }
 
             auto matrix = SolveSkewingMatrix(polyhedral_info);
 
@@ -220,14 +361,25 @@ struct OptPolyhedralPass : public mlir::PassWrapper<OptPolyhedralPass, mlir::Ope
             mlir::OpBuilder builder(for_op);
 
             // 直接调用我们写好的全包函数！
-            // 它会返回新的最外层循环，旧的 for_op 在函数内部已经被安全 erase 了。
-            mlir::affine::AffineForOp new_outer_loop = GenerateNewLoopNests(
+            // 它会返回所有新循环 (下标越小越外层)，旧的 for_op 在函数内部已经被安全 erase 了。
+            std::vector<mlir::affine::AffineForOp> new_loops = GenerateNewLoopNests(
                 builder, for_op.getLoc(), old_loops, inv_matrix);
 
-            // (注意：这里之后不要再对 for_op 或 old_loops 进行任何操作，它们已经被销毁了)
+            // ---------------------------------------------------------
+            // 第五步：分块
+            // ---------------------------------------------------------
+            std::vector<uint64_t> tiling_size = TilingSizeSolve(new_loops, B, M);
+
+            for (auto a:tiling_size) {
+                std::cout<<a<<" ";
+            }
+            std::cout<<"\n";
+
+            if (mlir::failed(performDiamondTiling(new_loops, tiling_size))) {
+                signalPassFailure();
+            }
 
             return mlir::WalkResult::advance();
-
         });
     }
 };
