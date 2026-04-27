@@ -86,6 +86,22 @@
             "pipeline": "builtin.module(lowering{base-llvm hoist-boundary loop-tiling affine-vectorize loop-parallelize})",
             "output_name": "tiling_vectorize_parallelize",
             "runtime_env": "OMP_NUM_THREADS=auto OMP_PROC_BIND=true OMP_PLACES=cores"
+        },
+        {
+          "key": "ezcomp_polyhedral",
+          "label": "Polyhedral",
+          "emit": "compile",
+          "pipeline": "builtin.module(lowering{base-llvm hoist-boundary polyhedral})",
+          "output_name": "polyhedral",
+          "runtime_env": "OMP_NUM_THREADS=auto OMP_PROC_BIND=true OMP_PLACES=cores"
+        },
+        {
+          "key": "ezcomp_polyhedral_vectorize",
+          "label": "Polyhedral+Vec",
+          "emit": "compile",
+          "pipeline": "builtin.module(lowering{base-llvm hoist-boundary polyhedral affine-vectorize})",
+          "output_name": "polyhedral_vectorize",
+          "runtime_env": "OMP_NUM_THREADS=auto OMP_PROC_BIND=true OMP_PLACES=cores"
         }
     ]
 }

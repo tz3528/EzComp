@@ -44,6 +44,16 @@ set(COMPARE_TEST_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # 配置比较测试脚本 (注入 ezcomp 路径、编译器、HDF5、OpenMP 信息和源码目录)
 configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/io_handler.py
+    ${CMAKE_CURRENT_BINARY_DIR}/io_handler.py
+    @ONLY
+)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/plotter.py
+    ${CMAKE_CURRENT_BINARY_DIR}/plotter.py
+    @ONLY
+)
+configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/compare.py
     ${CMAKE_CURRENT_BINARY_DIR}/compare.py
     @ONLY
