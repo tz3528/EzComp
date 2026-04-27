@@ -16,8 +16,11 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/Utils.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/IntegerSet.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 
@@ -174,7 +177,7 @@ std::vector<mlir::affine::AffineForOp> GenerateNewLoopNests(
     return new_loops;
 }
 
-mlir::LogicalResult performDiamondTiling(std::vector<mlir::affine::AffineForOp> loopBand,
+mlir::LogicalResult performDiamondTiling(std::vector<mlir::affine::AffineForOp>& loopBand,
                                          std::vector<uint64_t> tilingSizes) {
     if (loopBand.empty()) return mlir::failure();
     if (loopBand.size() < tilingSizes.size()) {
@@ -184,6 +187,10 @@ mlir::LogicalResult performDiamondTiling(std::vector<mlir::affine::AffineForOp> 
     int depth = tilingSizes.size();
     mlir::OpBuilder builder(loopBand.front());
     mlir::Location loc = loopBand.front().getLoc();
+
+    // 临时存储新建的循环结构
+    std::vector<mlir::affine::AffineForOp> tileLoops;
+    std::vector<mlir::affine::AffineForOp> pointLoops;
 
     // 1. 创建 Tile Loops (外层循环)
     llvm::SmallVector<mlir::Value, 4> tileIVs;
@@ -208,6 +215,8 @@ mlir::LogicalResult performDiamondTiling(std::vector<mlir::affine::AffineForOp> 
         );
 
         tileIVs.push_back(tileLoop.getInductionVar());
+        tileLoops.push_back(tileLoop); // --- 记录新建的 Tile Loop ---
+
         // 注册映射：后续的 Tile Loop 如果用到这一层的旧 IV，自动替换为当前的 Tile IV
         tileMap.map(loop.getInductionVar(), tileLoop.getInductionVar());
 
@@ -223,44 +232,40 @@ mlir::LogicalResult performDiamondTiling(std::vector<mlir::affine::AffineForOp> 
         int64_t Ti = tilingSizes[i];
         mlir::Value it = tileIVs[i];
 
-        // --- 修复：构造内层下界 max(original_LB, it) ---
+        // 构造内层下界 max(original_LB, it)
         unsigned numOldLBDims = loop.getLowerBoundMap().getNumDims();
         llvm::SmallVector<mlir::AffineExpr, 2> lbExprs;
 
-        // 1. 放入原始 LB 的表达式 (维度保持原样，完美匹配旧依赖)
         for (auto expr : loop.getLowerBoundMap().getResults()) {
             lbExprs.push_back(expr);
         }
-        // 2. 追加 it 作为全新的最高维度
         lbExprs.push_back(tileBuilder.getAffineDimExpr(numOldLBDims));
 
         llvm::SmallVector<mlir::Value, 4> lbOperands;
         for (auto op : loop.getLowerBoundOperands()) {
             lbOperands.push_back(pointMap.lookupOrDefault(op));
         }
-        lbOperands.push_back(it); // 追加 it 到末尾
+        lbOperands.push_back(it);
 
         auto newLBMap = mlir::AffineMap::get(
             numOldLBDims + 1,
             loop.getLowerBoundMap().getNumSymbols(),
             lbExprs, builder.getContext());
 
-        // --- 修复：构造内层上界 min(original_UB, it + Ti) ---
+        // 构造内层上界 min(original_UB, it + Ti)
         unsigned numOldUBDims = loop.getUpperBoundMap().getNumDims();
         llvm::SmallVector<mlir::AffineExpr, 2> ubExprs;
 
-        // 1. 放入原始 UB 的表达式
         for (auto expr : loop.getUpperBoundMap().getResults()) {
             ubExprs.push_back(expr);
         }
-        // 2. 追加 it + Ti 作为全新的最高维度
         ubExprs.push_back(tileBuilder.getAffineDimExpr(numOldUBDims) + Ti);
 
         llvm::SmallVector<mlir::Value, 4> ubOperands;
         for (auto op : loop.getUpperBoundOperands()) {
             ubOperands.push_back(pointMap.lookupOrDefault(op));
         }
-        ubOperands.push_back(it); // 追加 it 到末尾
+        ubOperands.push_back(it);
 
         auto newUBMap = mlir::AffineMap::get(
             numOldUBDims + 1,
@@ -272,6 +277,7 @@ mlir::LogicalResult performDiamondTiling(std::vector<mlir::affine::AffineForOp> 
             loc, lbOperands, newLBMap, ubOperands, newUBMap, 1);
 
         pointIVs.push_back(pointLoop.getInductionVar());
+        pointLoops.push_back(pointLoop); // --- 记录新建的 Point Loop ---
         pointMap.map(loop.getInductionVar(), pointLoop.getInductionVar());
 
         tileBuilder.setInsertionPointToStart(pointLoop.getBody());
@@ -282,18 +288,189 @@ mlir::LogicalResult performDiamondTiling(std::vector<mlir::affine::AffineForOp> 
     auto& innerPointBody = tileBuilder.getBlock()->getOperations();
     auto& oldBody = innerMostLoop.getBody()->getOperations();
 
-    // 经过 IRMapping 的隔离，这里只会替换掉旧 Loop Body 内部的变量使用，安全无副作用
     for (int i = 0; i < depth; ++i) {
         loopBand[i].getInductionVar().replaceAllUsesWith(pointIVs[i]);
     }
 
-    // 将旧 Body 移动到最内层 Point Loop
     innerPointBody.splice(innerPointBody.begin(), oldBody, oldBody.begin(), std::prev(oldBody.end()));
 
     // 4. 安全擦除外层循环树
     loopBand.front().getOperation()->erase();
 
+    // 5. --- 更新输出的 loopBand ---
+    // 清空已经失效的旧循环指针
+    loopBand.clear();
+    // 依次推入：外层的 Tile Loops -> 内层的 Point Loops
+    loopBand.insert(loopBand.end(), tileLoops.begin(), tileLoops.end());
+    loopBand.insert(loopBand.end(), pointLoops.begin(), pointLoops.end());
+
     return mlir::success();
+}
+
+using namespace mlir;
+using namespace mlir::affine;
+
+/// 辅助函数：计算 affine.for 循环的常量迭代次数 (Trip Count)
+int64_t getConstantTripCount(AffineForOp forOp, MLIRContext* ctx) {
+    if (forOp.hasConstantBounds()) {
+        int64_t lb = forOp.getConstantLowerBound();
+        int64_t ub = forOp.getConstantUpperBound();
+        int64_t step = forOp.getStepAsInt();
+        return (ub - lb + step - 1) / step;
+    }
+
+    AffineMap lbMap = forOp.getLowerBoundMap();
+    AffineMap ubMap = forOp.getUpperBoundMap();
+
+    if (lbMap.getNumResults() == 1 && ubMap.getNumResults() == 1) {
+        if (forOp.getLowerBoundOperands() == forOp.getUpperBoundOperands()) {
+            AffineExpr diffExpr = ubMap.getResult(0) - lbMap.getResult(0);
+            diffExpr = simplifyAffineExpr(diffExpr, lbMap.getNumDims(), lbMap.getNumSymbols());
+
+            if (auto constExpr = dyn_cast<AffineConstantExpr>(diffExpr)) {
+                int64_t diffVal = constExpr.getValue();
+                int64_t step = forOp.getStepAsInt();
+                return (diffVal + step - 1) / step;
+            }
+        }
+    }
+    return -1;
+}
+
+/// 核心函数：手动实现时空波前分块与并行化
+void applyWavefrontParallelization(std::vector<AffineForOp>& loops, MLIRContext* ctx) {
+    if (loops.empty() || loops.size() % 2 != 0) return;
+
+    size_t n = loops.size() / 2;
+    OpBuilder builder(loops[0]);
+    Location loc = loops[0].getLoc();
+
+    // ==========================================
+    // 1. 提取 Tile 循环的步长与精确 Trip Count
+    // ==========================================
+    std::vector<int64_t> tileSteps(n);
+    std::vector<int64_t> tripCounts(n);
+    std::vector<Value> oldTileIVs(n);
+
+    int64_t maxW = 0;
+
+    for (size_t i = 0; i < n; ++i) {
+        tileSteps[i] = loops[i].getStepAsInt();
+        oldTileIVs[i] = loops[i].getInductionVar();
+
+        int64_t tc = getConstantTripCount(loops[i], ctx);
+        if (tc <= 0) {
+            llvm::errs() << "Error: 无法推导出第 " << i << " 维的常量循环次数！\n";
+            return;
+        }
+        tripCounts[i] = tc;
+
+        // W = norm_0 + norm_1 + ... + norm_n-1
+        maxW += (tc - 1);
+    }
+
+    // ==========================================
+    // 2. 构造新的波前循环 W 和 归一化的空间循环
+    // ==========================================
+    // 最外层波前时间循环 (串行)
+    AffineForOp wLoop = builder.create<AffineForOp>(loc, 0, maxW + 1, 1);
+    builder.setInsertionPointToStart(wLoop.getBody());
+    Value W = wLoop.getInductionVar();
+
+    std::vector<Value> normIVs;
+    normIVs.push_back(W);
+    std::vector<AffineForOp> newSpatialLoops;
+
+    AffineForOp innermostNewLoop = wLoop;
+    for (size_t i = 1; i < n; ++i) {
+        AffineForOp spatialLoop = builder.create<AffineForOp>(loc, 0, tripCounts[i], 1);
+        builder.setInsertionPointToStart(spatialLoop.getBody());
+        normIVs.push_back(spatialLoop.getInductionVar());
+        innermostNewLoop = spatialLoop;
+
+        newSpatialLoops.push_back(spatialLoop);
+    }
+
+    // ==========================================
+    // 3. 在最内层反解原始坐标并构建合法性检查 (If Guard)
+    // ==========================================
+    builder.setInsertionPointToStart(innermostNewLoop.getBody());
+
+    // 反解 norm_0 = W - norm_1 - ... - norm_{n-1}
+    AffineExpr norm0Expr = builder.getAffineDimExpr(0);
+    for (size_t i = 1; i < n; ++i) {
+        norm0Expr = norm0Expr - builder.getAffineDimExpr(i);
+    }
+    AffineMap norm0Map = AffineMap::get(n, 0, norm0Expr, ctx);
+    Value norm0 = builder.create<AffineApplyOp>(loc, norm0Map, normIVs);
+
+    // 【关键】：构建 affine.if 保护！
+    // 因为切片公式算出的 norm_0 必须在 [0, tripCounts[0]-1] 的范围内
+    AffineExpr d0 = builder.getAffineDimExpr(0);
+    AffineExpr maxTcExpr = builder.getAffineConstantExpr(tripCounts[0] - 1);
+    // 约束条件： d0 >= 0  且  maxTcExpr - d0 >= 0
+    SmallVector<AffineExpr, 2> constraints = { d0, maxTcExpr - d0 };
+    SmallVector<bool, 2> eqFlags = { false, false }; // false 表示不等式 (>= 0)
+    IntegerSet validSet = IntegerSet::get(1, 0, constraints, eqFlags);
+
+    AffineIfOp ifOp = builder.create<AffineIfOp>(loc, validSet, ValueRange{norm0}, /*withElseRegion=*/false);
+
+    // 后续的所有物理坐标反推和真实计算，都必须放在 If 内部！
+    builder.setInsertionPointToStart(ifOp.getThenBlock());
+
+    // 恢复时间循环物理坐标 t = norm_0 * step_0 + lower_bound
+    AffineExpr iv0Expr = builder.getAffineDimExpr(0) * tileSteps[0];
+    Value newIv0 = builder.create<AffineApplyOp>(loc, AffineMap::get(1, 0, iv0Expr, ctx), ValueRange{norm0});
+
+    std::vector<Value> reconstructedIVs(n);
+    reconstructedIVs[0] = newIv0;
+
+    // 恢复空间物理坐标
+    for (size_t i = 1; i < n; ++i) {
+        AffineMap lbMap = loops[i].getLowerBoundMap();
+        SmallVector<Value, 4> lbOperands;
+        for (Value operand : loops[i].getLowerBoundOperands()) {
+            if (operand == oldTileIVs[0]) lbOperands.push_back(newIv0);
+            else lbOperands.push_back(operand);
+        }
+
+        Value offset = builder.create<AffineApplyOp>(loc, lbMap, lbOperands);
+        AffineExpr physExpr = builder.getAffineDimExpr(0) * tileSteps[i] + builder.getAffineDimExpr(1);
+        reconstructedIVs[i] = builder.create<AffineApplyOp>(
+            loc, AffineMap::get(2, 0, physExpr, ctx), ValueRange{normIVs[i], offset}
+        );
+    }
+
+    // ==========================================
+    // 4. 代码搬运 (Splicing) 与 变量替换
+    // ==========================================
+    // 提取出原来的第一个 Point 循环 (最内层的起始块)
+    AffineForOp firstPointLoop = loops[n];
+
+    // 把内层的计算逻辑搬运到我们新建的 If 保护块中
+    firstPointLoop->moveBefore(ifOp.getThenBlock()->getTerminator());
+
+    // 将原始的 Tile 迭代变量全局替换为我们重建出的物理变量
+    for (size_t i = 0; i < n; ++i) {
+        oldTileIVs[i].replaceAllUsesWith(reconstructedIVs[i]);
+    }
+
+    // ==========================================
+    // 5. 扫尾工作与并行化处理
+    // ==========================================
+    // 彻底销毁包含在原外层循环中的一切旧躯壳
+    loops[0].erase();
+
+    // (可选) 更新外部数组的引用，虽然旧的 loops[1~n-1] 已经析构了
+    loops[0] = wLoop;
+
+    // 【最终目标】：对于多核 CPU，仅对整体的第二维（即空间维度的第一维）进行粗粒度并行化
+    if (!newSpatialLoops.empty()) {
+        LogicalResult res = mlir::affine::affineParallelize(newSpatialLoops[0]);
+        if (failed(res)) {
+            llvm::errs() << "Warning: 官方并行化接口在处理外层空间 Tile 时失败！\n";
+        }
+    }
 }
 
 struct OptPolyhedralPass : public mlir::PassWrapper<OptPolyhedralPass, mlir::OperationPass<mlir::ModuleOp> > {
@@ -303,6 +480,7 @@ struct OptPolyhedralPass : public mlir::PassWrapper<OptPolyhedralPass, mlir::Ope
 
     void runOnOperation() override {
         mlir::ModuleOp module = getOperation();
+        mlir::MLIRContext* context = &getContext();
 
         uint64_t CL;
         uint64_t C;
@@ -315,7 +493,6 @@ struct OptPolyhedralPass : public mlir::PassWrapper<OptPolyhedralPass, mlir::Ope
         /// 然后考虑有哪些类型的优化
         /// 对于已知的倾斜分块而言，需要做的是选取一组满足约束条件的超平面
         /// 然后基于这组超平面，对循环索引进行变换
-
         module.walk([&](mlir::affine::AffineForOp for_op) {
             // 过滤：只抓取最外层（根部）循环
             if (for_op->getParentOfType<mlir::affine::AffineForOp>()) {
@@ -378,6 +555,11 @@ struct OptPolyhedralPass : public mlir::PassWrapper<OptPolyhedralPass, mlir::Ope
             if (mlir::failed(performDiamondTiling(new_loops, tiling_size))) {
                 signalPassFailure();
             }
+
+            // ---------------------------------------------------------
+            // 第六步：波前并行
+            // ---------------------------------------------------------
+            applyWavefrontParallelization(new_loops, context);
 
             return mlir::WalkResult::advance();
         });
