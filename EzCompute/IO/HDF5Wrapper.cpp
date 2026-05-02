@@ -7,21 +7,22 @@
 //===----------------------------------------------------------------------===//
 //
 // HDF5 输出实现
+// 从 MLIR memref 切片中提取数据并写入 HDF5 文件
 //
 //===----------------------------------------------------------------------===//
 
 
-#include <hdf5.h>
 #include <cctype>
 #include <cstring>
 #include <string>
 #include <vector>
 
+#include <hdf5.h>
+
 #include "HDF5Wrapper.h"
 
 namespace {
 
-// 把维度名做一个安全化：只保留 [A-Za-z0-9_]，其它字符替换成 '_'。
 static std::string sanitizeName(const char* s, int fallbackIdx) {
     if (!s || !*s) return "dim" + std::to_string(fallbackIdx);
     std::string out;
@@ -33,7 +34,6 @@ static std::string sanitizeName(const char* s, int fallbackIdx) {
     return out;
 }
 
-// 写一个 int64 的 attribute（标量）。
 static bool write_attr_i64(hid_t obj, const char* name, int64_t v) {
     hid_t space = H5Screate(H5S_SCALAR);
     if (space < 0) return false;
@@ -45,7 +45,6 @@ static bool write_attr_i64(hid_t obj, const char* name, int64_t v) {
     return st >= 0;
 }
 
-// 写一个 double 的 attribute（标量）。
 static bool write_attr_f64(hid_t obj, const char* name, double v) {
     hid_t space = H5Screate(H5S_SCALAR);
     if (space < 0) return false;
@@ -57,7 +56,6 @@ static bool write_attr_f64(hid_t obj, const char* name, double v) {
     return st >= 0;
 }
 
-// 写一个字符串数组 attribute（dim_names）。
 static bool write_attr_strs(hid_t obj, const char* name, const std::vector<std::string>& vals) {
     if (vals.empty()) return true;
 
@@ -84,7 +82,6 @@ static bool write_attr_strs(hid_t obj, const char* name, const std::vector<std::
     return st >= 0;
 }
 
-// 写一个 1D 坐标数据集（不使用 group）：例如 "/coord_x"。
 static bool write_coords_1d(hid_t file,
                             const std::string& dsName,
                             int64_t points,
@@ -96,7 +93,6 @@ static bool write_coords_1d(hid_t file,
     if (points == 1) {
         coords[0] = lower;
     } else {
-        // 包含端点的 linspace
         double step = (upper - lower) / static_cast<double>(points - 1);
         for (int64_t i = 0; i < points; ++i) {
             coords[static_cast<size_t>(i)] = lower + step * static_cast<double>(i);
@@ -118,7 +114,17 @@ static bool write_coords_1d(hid_t file,
     return st >= 0;
 }
 
-// 模板实现：Rank = memref rank（time-layer + space dims）
+//===----------------------------------------------------------------------===//
+// dump_impl: 核心实现模板
+//===----------------------------------------------------------------------===//
+
+/// 从 memref 切片中提取数据并写入 HDF5 文件
+///
+/// 实现流程：
+/// 1. 根据 timeIndex 计算目标时间层 layer = timeIndex % timeLayers
+/// 2. 按 strides 遍历 memref，将切片数据收集到连续内存
+/// 3. 创建 /result 数据集并写入数据
+/// 4. 写入维度元信息（属性）和坐标数据集（/coord_x, /coord_y, ...）
 template <int Rank>
 static int dump_impl(double* data,
                      int64_t offset,
@@ -128,21 +134,19 @@ static int dump_impl(double* data,
                      const char* const* dimNames,
                      const double* lowers,
                      const double* uppers) {
-    static_assert(Rank >= 2, "memref 至少需要 [timeLayer, space...] 两维");
+    static_assert(Rank >= 2, "memref rank must be at least 2");
 
     if (!data) return -1;
 
     const int64_t timeLayers = sizes[0];
     if (timeLayers <= 0) return -2;
 
-    // 你传入的是时间下标 n：这里统一映射到 layer（对 2-layer 就是 mod 2）
     int64_t layer = timeIndex % timeLayers;
     if (layer < 0) layer += timeLayers;
 
-    constexpr int SRank = Rank - 1; // 空间维数
+    constexpr int SRank = Rank - 1;
     if (!dimNames || !lowers || !uppers) return -3;
 
-    // 计算空间总元素数、以及 HDF5 维度数组
     int64_t spatialCount = 1;
     hsize_t dims[SRank];
     for (int i = 0; i < SRank; ++i) {
@@ -152,8 +156,7 @@ static int dump_impl(double* data,
         dims[i] = static_cast<hsize_t>(sz);
     }
 
-    // 把 slice 收集成连续内存，方便一次性写入 HDF5。
-    // idx = offset + layer*stride0 + Σ(iv[k]*stride[k+1])
+    // 按 strides 遍历 memref，收集目标 layer 的数据
     std::vector<double> out(static_cast<size_t>(spatialCount));
     std::vector<int64_t> iv(SRank, 0);
 
@@ -164,7 +167,7 @@ static int dump_impl(double* data,
         }
         out[static_cast<size_t>(linear)] = data[idx];
 
-        // 以"最后一维最快"的顺序递增 iv（与常见 row-major 一致）
+        // 最后一维最快变化（row-major 顺序）
         for (int k = SRank - 1; k >= 0; --k) {
             iv[k]++;
             if (iv[k] < sizes[k + 1]) break;
@@ -172,11 +175,9 @@ static int dump_impl(double* data,
         }
     }
 
-    // 创建/覆盖输出文件：当前工作目录下 result.h5
     hid_t file = H5Fcreate("result.h5", H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
     if (file < 0) return -5;
 
-    // 创建结果数据集：/result
     hid_t space = H5Screate_simple(SRank, dims, nullptr);
     if (space < 0) { H5Fclose(file); return -6; }
 
@@ -188,16 +189,11 @@ static int dump_impl(double* data,
         H5Dclose(dset); H5Sclose(space); H5Fclose(file); return -8;
     }
 
-    // =========================
-    // 写入"维度信息"（不使用 group）
-    // =========================
-
-    // 记录这次输出对应的 timeIndex 和映射后的 layer
+    // 写入维度元信息
     (void)write_attr_i64(dset, "time_index", timeIndex);
     (void)write_attr_i64(dset, "layer_index", layer);
     (void)write_attr_i64(dset, "space_rank", SRank);
 
-    // 维度名数组 attribute：dim_names = ["x","y",...]
     std::vector<std::string> safeDimNames;
     safeDimNames.reserve(SRank);
     for (int i = 0; i < SRank; ++i) {
@@ -205,8 +201,6 @@ static int dump_impl(double* data,
     }
     (void)write_attr_strs(dset, "dim_names", safeDimNames);
 
-    // 每个维度的 lower/upper/points 写成 attribute：
-    // 例如：x.lower / x.upper / x.points
     for (int i = 0; i < SRank; ++i) {
         const std::string& nm = safeDimNames[i];
         const int64_t points = sizes[i + 1];
@@ -217,8 +211,6 @@ static int dump_impl(double* data,
         (void)write_attr_f64(dset, (nm + ".lower").c_str(), lo);
         (void)write_attr_f64(dset, (nm + ".upper").c_str(), up);
 
-        // 同时写一个坐标数据集（不使用 group）：/coord_<name>
-        // 坐标规则：包含端点的 linspace(lower, upper, points)
         (void)write_coords_1d(file, "/coord_" + nm, points, lo, up);
     }
 
@@ -230,9 +222,10 @@ static int dump_impl(double* data,
 
 } // anonymous namespace
 
-// =========================
-// 对外导出的 C ABI 包装函数
-// =========================
+//===----------------------------------------------------------------------===//
+// C ABI 导出函数
+//===----------------------------------------------------------------------===//
+
 extern "C" int dump_result_hdf5_f64_rank2(
     double* basePtr, double* data, int64_t offset,
     int64_t size0, int64_t size1,
@@ -242,7 +235,7 @@ extern "C" int dump_result_hdf5_f64_rank2(
     const double* lowers,
     const double* uppers)
 {
-    (void)basePtr; // unused
+    (void)basePtr;
     int64_t sizes[] = {size0, size1};
     int64_t strides[] = {stride0, stride1};
     return dump_impl<2>(data, offset, sizes, strides, timeIndex, dimNames, lowers, uppers);
@@ -257,7 +250,7 @@ extern "C" int dump_result_hdf5_f64_rank3(
     const double* lowers,
     const double* uppers)
 {
-    (void)basePtr; // unused
+    (void)basePtr;
     int64_t sizes[] = {size0, size1, size2};
     int64_t strides[] = {stride0, stride1, stride2};
     return dump_impl<3>(data, offset, sizes, strides, timeIndex, dimNames, lowers, uppers);
@@ -272,7 +265,7 @@ extern "C" int dump_result_hdf5_f64_rank4(
     const double* lowers,
     const double* uppers)
 {
-    (void)basePtr; // unused
+    (void)basePtr;
     int64_t sizes[] = {size0, size1, size2, size3};
     int64_t strides[] = {stride0, stride1, stride2, stride3};
     return dump_impl<4>(data, offset, sizes, strides, timeIndex, dimNames, lowers, uppers);
