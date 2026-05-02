@@ -152,6 +152,17 @@ struct OptLoopPeelingPass : public mlir::PassWrapper<OptLoopPeelingPass, mlir::O
         // 收集所有需要处理的 affine.for（从内到外）
         llvm::SmallVector<mlir::affine::AffineForOp> loopsToProcess;
         module.walk([&](mlir::affine::AffineForOp forOp) {
+            // 判断是否为最内层循环 (Innermost Loop)
+            // 遍历当前 forOp 的循环体，如果找到任何嵌套的 affine.for，则中断并标记
+            auto walkResult = forOp.getBody()->walk([&](mlir::affine::AffineForOp innerFor) {
+                return mlir::WalkResult::interrupt();
+            });
+
+            // 如果遍历被中断，说明内部存在 affine.for，不是最内层循环，直接跳过
+            if (walkResult.wasInterrupted()) {
+                return;
+            }
+
             if (!forOp.hasConstantLowerBound() ||
                 !forOp.hasConstantUpperBound() ||
                 !hasVectorOps(forOp)) {

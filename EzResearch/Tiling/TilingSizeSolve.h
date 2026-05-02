@@ -20,7 +20,7 @@
 
 namespace ezresearch {
 
-constexpr double alpha = 0.5;
+constexpr double alpha = 0.7;
 
 uint64_t computeHalo(std::vector<uint64_t>& tiling_size, uint64_t B);
 

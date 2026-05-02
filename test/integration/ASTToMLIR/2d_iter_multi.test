@@ -59,7 +59,7 @@
 # CHECK-DAG: comp.sample {{.*}} dims = [@t, @x, @y] shift = [1, 0, 0]
 # CHECK: arith.addf
 # CHECK: arith.subf
-# CHECK: comp.call @delta
+# CHECK: comp.delta @x 2 : f64
 # CHECK: arith.divf
 # CHECK: arith.addf
 # CHECK: comp.yield

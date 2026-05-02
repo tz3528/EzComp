@@ -10,16 +10,15 @@
 # ===== 验证 comp 方言操作已消除 =====
 # CHECK-NOT: comp.
 
-# ===== 验证 memref 分配：第一维=2，后续=x.points=11, y.points=11 =====
+# ===== 验证 memref 分配：时间维在最前，t*2, x=11, y=11 =====
 # CHECK: memref.alloc() : memref<2x11x11xf64>
 
-# ===== 初始化循环 =====
+# ===== 初始化循环：t=0 固定，遍历 x, y =====
 # CHECK: affine.for {{.*}} = 0 to 11
 # CHECK: affine.for {{.*}} = 0 to 11
 # CHECK: memref.store {{.*}} : memref<2x11x11xf64>
 
-# ===== 边界条件循环1：u(0,y,t) = y，包含坐标计算 =====
-# CHECK: affine.for {{.*}} = 0 to 11
+# ===== 初始边界条件循环1：u(0,y,t) = y，包含坐标计算 =====
 # CHECK: affine.for {{.*}} = 0 to 11
 # CHECK: arith.sitofp {{.*}} : i64 to f64
 # CHECK: arith.divf
@@ -27,12 +26,12 @@
 # CHECK: arith.addf
 # CHECK: memref.store {{.*}} : memref<2x11x11xf64>
 
-# ===== 时间迭代循环 =====
-# CHECK: affine.for {{.*}} = 0 to 10
+# ===== 时间迭代循环：t (0 to 11) =====
 # CHECK: affine.for {{.*}} = 0 to 11
 # CHECK: affine.for {{.*}} = 0 to 11
-# CHECK: memref.load {{.*}} : memref<2x11x11xf64>
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
+# CHECK: affine.for {{.*}} = 0 to 11
+# CHECK: affine.load {{.*}} : memref<2x11x11xf64>
+# CHECK: affine.store {{.*}} : memref<2x11x11xf64>
 
 declarations {
     x[0,10,11];

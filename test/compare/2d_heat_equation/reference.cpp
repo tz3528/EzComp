@@ -12,17 +12,21 @@
 #include <vector>
 #include <hdf5.h>
 
+#ifdef USE_OPENMP
+#include <omp.h>
+#endif
+
 // 网格参数
 constexpr int NX = 2001;     // x 方向点数
 constexpr int NY = 2001;     // y 方向点数
-constexpr int NT = 4000;    // 时间步数
+constexpr int NT = 1000;    // 时间步数
 
 constexpr double X_LOWER = 0.0;
 constexpr double X_UPPER = 2000.0;
 constexpr double Y_LOWER = 0.0;
 constexpr double Y_UPPER = 2000.0;
 
-constexpr double ALPHA = 0.5;  // 热扩散系数
+constexpr double ALPHA = 0.25;  // 热扩散系数
 
 // 格式化输出用时
 static void print_timer(const char* label, const char* tag, long long ns) {
@@ -118,7 +122,7 @@ int main(int argc, char* argv[]) {
 
     double dx = (X_UPPER - X_LOWER) / (NX - 1);
     double dy = (Y_UPPER - Y_LOWER) / (NY - 1);
-    double dt = 0.5;
+    double dt = 1.0;
 
     for (int i = 0; i < NX; ++i) {
         coord_x[i] = X_LOWER + i * dx;
@@ -166,6 +170,9 @@ int main(int argc, char* argv[]) {
     // ========== 时间迭代 ==========
     for (int t = 0; t < NT; ++t) {
         // 计算内部点
+#ifdef USE_OPENMP
+        #pragma omp parallel for schedule(static)
+#endif
         for (int i = 1; i < NX - 1; ++i) {
             for (int j = 1; j < NY - 1; ++j) {
                 int idx = i * NY + j;

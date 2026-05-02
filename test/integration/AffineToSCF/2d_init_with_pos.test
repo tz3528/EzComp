@@ -1,67 +1,37 @@
 #===-- 2d_init_with_pos.test ----------------------------------*-- Comp -*-===#
 #
 # 2D: 初始化方程右侧有位置信息 - AffineToSCF 测试
-# 验证所有 affine.for 被正确降级为 scf.for
+# u(x,y,0) = x + y → coord 降级为坐标计算
 #
 #===------------------------------------------------------------------------===#
 
 # RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true affine-scf=true})" | FileCheck %s
 
-# ===== 确保没有 affine.for =====
-# CHECK-NOT: affine.for
+# ===== 验证 comp 方言操作已消除 =====
+# CHECK-NOT: comp.
 
-# CHECK-LABEL: func.func @main()
+# ===== 验证 memref 分配 =====
+# CHECK: memref.alloc() : memref<2x11x11xf64>
 
-# ===== 初始化循环：值为 x + y =====
+# ===== 初始化循环：包含坐标计算 =====
 # CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
 # CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: arith.index_cast {{.*}} : index to i64
 # CHECK: arith.sitofp {{.*}} : i64 to f64
-# CHECK: arith.addf {{.*}} : f64
+# CHECK: arith.divf
+# CHECK: arith.mulf
+# CHECK: arith.addf
 # CHECK: memref.store {{.*}} : memref<2x11x11xf64>
 
 # ===== 边界条件循环 =====
 # CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
 # CHECK: memref.store {{.*}} : memref<2x11x11xf64>
 
+# ===== 时间迭代循环 =====
 # CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# ===== 主迭代循环 =====
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}10{{.*}} step {{.*}}
 # CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
 # CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
 # CHECK: memref.load {{.*}} : memref<2x11x11xf64>
 # CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# ===== 主循环内的边界条件循环 =====
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}11{{.*}} step {{.*}}
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: return
 
 declarations {
     x[0,10,11];

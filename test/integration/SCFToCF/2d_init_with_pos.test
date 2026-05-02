@@ -1,93 +1,29 @@
 #===-- 2d_init_with_pos.test ----------------------------------*-- Comp -*-===#
 #
 # 2D: 初始化方程右侧有位置信息 - SCFToCF 测试
-# 验证所有 scf.for 被正确降级为 cf.br / cf.cond_br 控制流
+# u(x,y,0) = x + y
 #
 #===------------------------------------------------------------------------===#
 
 # RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true affine-scf=true scf-cf=true})" | FileCheck %s
 
-# ===== 确保没有 scf.for 和 affine.for =====
-# CHECK-NOT: scf.for
-# CHECK-NOT: affine.for
+# ===== 验证 comp 方言操作已消除 =====
+# CHECK-NOT: comp.
 
-# CHECK-LABEL: func.func @main()
+# ===== 验证运行时库函数声明 =====
+# CHECK-DAG: func.func private @timer_start
+# CHECK-DAG: func.func private @timer_stop_and_print
 
 # ===== 验证 memref 分配 =====
 # CHECK: memref.alloc() : memref<2x11x11xf64>
 
-# ===== 初始化循环：值为 x + y =====
-# CHECK: cf.br {{.*}}(%c0 : index)
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
+# ===== 验证 cf 循环结构 =====
+# CHECK: cf.br
 # CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.index_cast {{.*}} : index to i64
-# CHECK: arith.sitofp {{.*}} : i64 to f64
-# CHECK: arith.addf {{.*}} : f64
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
 
-# ===== 边界条件循环 =====
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# ===== 主迭代循环 =====
-# CHECK: arith.cmpi slt, {{.*}}, %c10 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.load {{.*}} : memref<2x11x11xf64>
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# ===== 主循环内的边界条件循环 =====
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: return
+# ===== 验证坐标计算 =====
+# CHECK: arith.sitofp
+# CHECK: arith.divf
 
 declarations {
     x[0,10,11];

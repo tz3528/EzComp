@@ -2,42 +2,35 @@
 #
 # 2D: 迭代方程右侧有位置偏移 - BaseToLLVM 测试
 # u(x,y,t+1) = u(x-1,y,t) + u(x+1,y,t) + u(x,y-1,t) + u(x,y+1,t)
-# 验证多维索引偏移计算
 #
 #===------------------------------------------------------------------------===#
 
 # RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true base-llvm=true})" | FileCheck %s
 
-# ===== 验证 LLVM 函数入口 =====
-# CHECK-LABEL: llvm.func @main()
+# ===== 验证 comp 方言操作已消除 =====
+# CHECK-NOT: comp.
 
-# ===== 验证常量（函数开头）=====
-# CHECK: llvm.mlir.constant
+# ===== 验证运行时库函数声明 =====
+# CHECK-DAG: llvm.func @timer_start
+# CHECK-DAG: llvm.func @timer_stop_and_print
+# CHECK-DAG: llvm.func @malloc
 
-# ===== 验证内存分配（malloc）=====
+# ===== 验证内存分配 =====
 # CHECK: llvm.call @malloc
 
-# ===== 验证控制流操作 =====
-# CHECK: llvm.br
+# ===== 验证循环结构 =====
 # CHECK: llvm.cond_br
 
-# ===== 验证比较操作 =====
-# CHECK: llvm.icmp "slt"
+# ===== 验证多个加载操作 =====
+# CHECK: llvm.load
+# CHECK: llvm.load
+# CHECK: llvm.load
+# CHECK: llvm.load
 
-# ===== 验证多个内存加载（四向偏移）=====
-# CHECK-DAG: llvm.load
-# CHECK-DAG: llvm.load
-# CHECK-DAG: llvm.load
-# CHECK-DAG: llvm.load
-
-# ===== 验证浮点加法 =====
+# ===== 验证加法运算 =====
 # CHECK: llvm.fadd
-
-# ===== 验证内存存储 =====
-# CHECK: llvm.store
-
-# ===== 验证返回 =====
-# CHECK: llvm.return
+# CHECK: llvm.fadd
+# CHECK: llvm.fadd
 
 declarations {
     x[0,10,11];

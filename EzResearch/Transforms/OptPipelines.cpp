@@ -55,4 +55,19 @@ void LoopTiling(mlir::OpPassManager &pm) {
     fpm.addPass(mlir::createCSEPass());
 }
 
+void LoopParallelize(mlir::OpPassManager &pm) {
+    pm.addPass(createOptLoopParallelizePass());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+}
+
+void Polyhedral(mlir::OpPassManager &pm) {
+    auto &fpm = pm.nest<mlir::func::FuncOp>();
+    fpm.addPass(mlir::affine::createAffineLoopNormalizePass());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(createOptPolyhedralPass());
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(mlir::createCSEPass());
+}
+
 }

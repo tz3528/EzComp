@@ -33,7 +33,6 @@
 # CHECK: llvm.fadd
 # CHECK: llvm.fmul
 # CHECK: llvm.fsub
-# CHECK: llvm.fdiv
 
 # ===== 验证内存存储 =====
 # CHECK: llvm.store

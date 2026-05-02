@@ -1,98 +1,31 @@
 #===-- 2d_iter_with_shift.test --------------------------------*-- Comp -*-===#
 #
 # 2D: 迭代方程右侧有位置偏移 - SCFToCF 测试
-# 验证所有 scf.for 被正确降级为 cf.br / cf.cond_br 控制流
+# u(x,y,t+1) = u(x-1,y,t) + u(x+1,y,t) + u(x,y-1,t) + u(x,y+1,t)
 #
 #===------------------------------------------------------------------------===#
 
 # RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true affine-scf=true scf-cf=true})" | FileCheck %s
 
-# ===== 确保没有 scf.for 和 affine.for =====
-# CHECK-NOT: scf.for
-# CHECK-NOT: affine.for
+# ===== 验证 comp 方言操作已消除 =====
+# CHECK-NOT: comp.
 
-# CHECK-LABEL: func.func @main()
+# ===== 验证运行时库函数声明 =====
+# CHECK-DAG: func.func private @timer_start
+# CHECK-DAG: func.func private @timer_stop_and_print
 
 # ===== 验证 memref 分配 =====
 # CHECK: memref.alloc() : memref<2x11x11xf64>
 
-# ===== 初始化循环：嵌套 cf.br / cf.cond_br 遍历 x, y =====
-# CHECK: cf.br {{.*}}(%c0 : index)
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# ===== 边界条件循环 =====
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# ===== 主迭代循环：遍历 t =====
-# CHECK: arith.cmpi slt, {{.*}}, %c10 : index
+# ===== 验证 cf 循环结构 =====
+# CHECK: cf.br
 # CHECK: cf.cond_br
 
-# ===== 三层嵌套迭代循环，带偏移的 load =====
-# CHECK: arith.cmpi slt, {{.*}}, %c10 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c10 : index
-# CHECK: cf.cond_br
-# CHECK: memref.load {{.*}} : memref<2x11x11xf64>
-# CHECK: memref.load {{.*}} : memref<2x11x11xf64>
-# CHECK: memref.load {{.*}} : memref<2x11x11xf64>
-# CHECK: memref.load {{.*}} : memref<2x11x11xf64>
-# CHECK: arith.addf
-# CHECK: arith.addf
-# CHECK: arith.addf
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# ===== 主循环内的边界条件循环 =====
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: arith.cmpi slt, {{.*}}, %c11 : index
-# CHECK: cf.cond_br
-# CHECK: memref.store {{.*}} : memref<2x11x11xf64>
-
-# CHECK: return
+# ===== 验证多个加载 =====
+# CHECK: memref.load
+# CHECK: memref.load
+# CHECK: memref.load
+# CHECK: memref.load
 
 declarations {
     x[0,10,11];

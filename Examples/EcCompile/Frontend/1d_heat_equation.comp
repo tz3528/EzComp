@@ -3,32 +3,33 @@
 # 描述: 模拟一维杆上的热传导，两端温度固定
 
 declarations {
-    x[0,100,101];
     t[0,100,101];
+    x[0,100,101];
 }
 
 equations {
     # 热传导方程: ∂u/∂t = 100 * ∂²u/∂x²
-    diff(u(x,t),t,1)=100*diff(u(x,t),x,2);
+    diff(u(t,x),t,1)=100*diff(u(t,x),x,2);
 
     # 二阶空间导数的有限差分近似（三点中心差分）
-    diff(u(x,t),x,2)=(u(x-1,t)+u(x+1,t)-2*u(x,t))/delta(x,2);
+    diff(u(t,x),x,2)=(u(t,x-1)+u(t,x+1)-2*u(t,x))/delta(x,2);
 
     # 从时间导数更新到下一时间步
-    u(x,t+1)=u(x,t)+diff(u(x,t),t,1)*delta(t,1);
+    u(t+1,x)=u(t,x)+diff(u(t,x),t,1)*delta(t,1);
 
     # 初始条件: t=0时，整个杆温度为0
-    u(x,0)=0;
+    u(0,x)=0;
 
     # 边界条件: 两端温度固定为10
-    u(0,t)=10;
-    u(100,t)=10;
+    u(t,0)=10;
+    u(t,100)=10;
 }
 
 options {
     mode:"time-pde";
     method:"FDM";
     precision:-6;
-    function:"u(x,t)";
+    function:"u(t,x)";
     timeVar:"t";
 }
+

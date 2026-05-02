@@ -12,31 +12,27 @@
 
 # CHECK-LABEL: func.func @main()
 
+# ===== 验证 memref 分配 =====
+# CHECK: memref.alloc() : memref<2x101xf64>
+
 # ===== 初始化循环：遍历 x =====
 # CHECK: scf.for {{.*}} = {{.*}} to {{.*}}101{{.*}} step {{.*}}
 # CHECK: memref.store {{.*}} : memref<2x101xf64>
 
-# ===== 边界条件循环1：u(0,t) = 10 =====
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}51{{.*}} step {{.*}}
+# ===== 单点边界条件：u(0,0) = 10, u(100,0) = 0 =====
 # CHECK: memref.store {{.*}} : memref<2x101xf64>
-
-# ===== 边界条件循环2：u(100,t) =====
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}51{{.*}} step {{.*}}
 # CHECK: memref.store {{.*}} : memref<2x101xf64>
 
 # ===== 主迭代循环：遍历 t =====
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}50{{.*}} step {{.*}}
+# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}51{{.*}} step {{.*}}
 
 # ===== 内层迭代循环：遍历 x =====
 # CHECK: scf.for {{.*}} = {{.*}} to {{.*}}101{{.*}} step {{.*}}
 # CHECK: memref.load {{.*}} : memref<2x101xf64>
 # CHECK: memref.store {{.*}} : memref<2x101xf64>
 
-# ===== 主循环内的边界条件循环（包含常量 10）=====
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}51{{.*}} step {{.*}}
+# ===== 主循环内的边界条件（常量 10）=====
 # CHECK: memref.store {{.*}} : memref<2x101xf64>
-
-# CHECK: scf.for {{.*}} = {{.*}} to {{.*}}51{{.*}} step {{.*}}
 # CHECK: memref.store {{.*}} : memref<2x101xf64>
 
 # CHECK: return

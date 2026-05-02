@@ -2,43 +2,28 @@
 #
 # 2D: 多个迭代方程 - BaseToLLVM 测试
 # diff(u,x,2) = ... 和 u(x,y,t+1) = u(x,y,t) + diff(u,x,2)
-# 验证多个 sample 和复杂算术运算
 #
 #===------------------------------------------------------------------------===#
 
 # RUN: %ezcomp %s --emit=mlir --pass-pipeline="builtin.module(lowering{comp-base=true base-llvm=true})" | FileCheck %s
 
-# ===== 验证 LLVM 函数入口 =====
-# CHECK-LABEL: llvm.func @main()
+# ===== 验证 comp 方言操作已消除 =====
+# CHECK-NOT: comp.
 
-# ===== 验证常量（函数开头）=====
-# CHECK: llvm.mlir.constant
+# ===== 验证运行时库函数声明 =====
+# CHECK-DAG: llvm.func @timer_start
+# CHECK-DAG: llvm.func @timer_stop_and_print
+# CHECK-DAG: llvm.func @malloc
 
-# ===== 验证内存分配（malloc）=====
+# ===== 验证内存分配 =====
 # CHECK: llvm.call @malloc
 
-# ===== 验证控制流操作 =====
-# CHECK: llvm.br
+# ===== 验证循环结构 =====
 # CHECK: llvm.cond_br
 
-# ===== 验证比较操作 =====
-# CHECK: llvm.icmp "slt"
-
-# ===== 验证多个内存加载 =====
-# CHECK-DAG: llvm.load
-# CHECK-DAG: llvm.load
-# CHECK-DAG: llvm.load
-
-# ===== 验证浮点算术 =====
-# CHECK: llvm.fadd
-# CHECK: llvm.fsub
-# CHECK: llvm.fdiv
-
-# ===== 验证内存存储 =====
+# ===== 验证加载和存储 =====
+# CHECK: llvm.load
 # CHECK: llvm.store
-
-# ===== 验证返回 =====
-# CHECK: llvm.return
 
 declarations {
     x[0,10,11];

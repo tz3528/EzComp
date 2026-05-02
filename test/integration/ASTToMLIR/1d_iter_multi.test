@@ -40,7 +40,7 @@
 # CHECK-DAG: comp.sample {{.*}} dims = [@t, @x] shift = [0, 0]
 # CHECK-DAG: comp.sample {{.*}} dims = [@t, @x] shift = [0, 1]
 # CHECK-DAG: comp.sample {{.*}} dims = [@t, @x] shift = [1, 0]
-# CHECK: comp.call @delta
+# CHECK: comp.delta @x 2 : f64
 # CHECK: comp.yield
 
 declarations {

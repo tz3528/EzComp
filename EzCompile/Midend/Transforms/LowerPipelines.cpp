@@ -21,6 +21,7 @@ void LowerToBase(mlir::OpPassManager &pm) {
     pm.addPass(createLowerCompCallPass());
     pm.addPass(createLowerCompPointsPass());
     pm.addPass(createLowerCompFieldPass());
+    pm.addPass(createLowerCompLoadPass());
     pm.addPass(createLowerCompApplyInitPass());
     pm.addPass(createLowerCompDirichletPass());
     pm.addPass(createLowerCompForTimePass());
@@ -59,6 +60,14 @@ void ToLLVM(mlir::OpPassManager &pm) {
     pm.addPass(mlir::createConvertToLLVMPass());
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
+}
+
+void AdjustTimeIndex(mlir::OpPassManager &pm) {
+    pm.addPass(createAdjustTimeIndexPass());
+    auto &fpm = pm.nest<mlir::func::FuncOp>();
+    fpm.addPass(mlir::affine::createAffineLoopInvariantCodeMotionPass());
+    fpm.addPass(mlir::createCanonicalizerPass());
+    fpm.addPass(mlir::createCSEPass());
 }
 
 } // namespace ezcompile

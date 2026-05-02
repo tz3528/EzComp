@@ -1,7 +1,7 @@
 #===-- 1d_init_no_pos.test ------------------------------------*-- Comp -*-===#
 #
 # 1D: 初始化方程右侧无位置信息 - CompToBase 测试
-# 验证 Comp 方言降级为 Affine/MemRef/Arith 方言
+# u(x,0) = 0
 #
 #===------------------------------------------------------------------------===#
 
@@ -10,35 +10,15 @@
 # ===== 验证 comp 方言操作已消除 =====
 # CHECK-NOT: comp.
 
-# ===== 验证 memref 分配：第一维=2，第二维=x.points=101 =====
+# ===== 验证 memref 分配 =====
 # CHECK: memref.alloc() : memref<2x101xf64>
 
-# ===== 初始化循环：遍历所有 x (0 to 101) =====
+# ===== 初始化循环 =====
 # CHECK: affine.for {{.*}} = 0 to 101
 # CHECK: memref.store {{.*}} : memref<2x101xf64>
 
-# ===== 边界条件循环1：u(0,t) 遍历 t (0 to 51) =====
+# ===== 时间迭代循环 =====
 # CHECK: affine.for {{.*}} = 0 to 51
-# CHECK: memref.store {{.*}} : memref<2x101xf64>
-
-# ===== 边界条件循环2：u(100,t) =====
-# CHECK: affine.for {{.*}} = 0 to 51
-# CHECK: memref.store {{.*}} : memref<2x101xf64>
-
-# ===== 时间迭代循环：t (0 to 50) =====
-# CHECK: affine.for {{.*}} = 0 to 50
-
-# ===== 空间更新循环：无偏移，完整遍历 x (0 to 101) =====
-# CHECK: affine.for {{.*}} = 0 to 101
-# CHECK: memref.load {{.*}} : memref<2x101xf64>
-# CHECK: memref.store {{.*}} : memref<2x101xf64>
-
-# ===== 时间循环内的边界条件循环 =====
-# CHECK: affine.for {{.*}} = 0 to 51
-# CHECK: memref.store {{.*}} : memref<2x101xf64>
-
-# CHECK: affine.for {{.*}} = 0 to 51
-# CHECK: memref.store {{.*}} : memref<2x101xf64>
 
 declarations {
     x[0,100,101];

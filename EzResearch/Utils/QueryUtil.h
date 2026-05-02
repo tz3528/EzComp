@@ -209,6 +209,55 @@ inline std::optional<int64_t> getConstantIndex(mlir::Value idx) {
     return std::nullopt;
 }
 
+static bool isIgnorableOuterOp(mlir::Operation *op) {
+    return mlir::isa<mlir::affine::AffineApplyOp>(op) ||
+           mlir::isa<mlir::arith::ConstantOp>(op) ||
+           mlir::isa<mlir::arith::IndexCastOp>(op);
+}
+
+// 验证从 root 开始的循环是否为完美嵌套
+inline bool isPerfectLoopNest(mlir::affine::AffineForOp root) {
+    mlir::affine::AffineForOp currentLoop = root;
+
+    while (true) {
+        mlir::Block &body = currentLoop.getRegion().front();
+        int opCount = 0;
+        mlir::affine::AffineForOp nextLoop = nullptr;
+
+        // 遍历当前循环体内的所有 Operation
+        for (mlir::Operation &op : body) {
+            // 忽略 Terminator (通常是 affine.yield)
+            if (op.hasTrait<mlir::OpTrait::IsTerminator>()) {
+                continue;
+            }
+
+            // 忽略 affine.apply、arith.constant、arith.indexCast 等不影响循环嵌套的操作
+            if (isIgnorableOuterOp(&op)) {
+                continue;
+            }
+
+            opCount++;
+            if (auto forOp = mlir::dyn_cast<mlir::affine::AffineForOp>(op)) {
+                nextLoop = forOp;
+            }
+        }
+
+        // 如果当前循环体内没有嵌套其他 affine.for，说明到达了最内层，是完美嵌套
+        if (!nextLoop) {
+            return true;
+        }
+
+        // 如果当前层包含了超过 1 个以上的 Operation（即除了唯一的内层循环外，还有其他计算），
+        // 则该嵌套不是完美的
+        if (opCount > 1) {
+            return false;
+        }
+
+        // 继续向内层检查
+        currentLoop = nextLoop;
+    }
+}
+
 }
 
 #endif //EZ_RESEARCH_QUERY_UTIL_H

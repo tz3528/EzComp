@@ -139,7 +139,7 @@ mlir::FailureOr<int64_t> OptionsTable::getInt(std::string name, std::string &err
         err = "Option '" + name + "' is not registered";
         return mlir::failure();
     }
-    if (specs_[name].kind != Kind::Str) {
+    if (specs_[name].kind != Kind::IntI64) {
         err = "Option '" + name + "' is " + valueTypeName(specs_[name].value);
         return mlir::failure();
     }
@@ -151,7 +151,7 @@ mlir::FailureOr<double> OptionsTable::getFloat(std::string name, std::string &er
         err = "Option '" + name + "' is not registered";
         return mlir::failure();
     }
-    if (specs_[name].kind != Kind::Str) {
+    if (specs_[name].kind != Kind::FloatF64) {
         err = "Option '" + name + "' is " + valueTypeName(specs_[name].value);
         return mlir::failure();
     }

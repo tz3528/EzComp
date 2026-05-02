@@ -194,7 +194,7 @@ struct LowerDirichletPattern : mlir::OpConversionPattern<comp::DirichletOp> {
 			mlir::Value timeIV = bodyBlock->getArgument(0);
 			mlir::Value timeIVPlusOne = rewriter.create<mlir::arith::AddIOp>(
 					loc, timeIV, constIndex(rewriter, loc, 1));
-			dimIndexVal[time_var] = modIndex(rewriter, loc, timeIVPlusOne, 2);
+			dimIndexVal[time_var] = timeIVPlusOne;
 
             if (mlir::failed(buildLoopNest(0, dimIndexVal))) return mlir::failure();
         }

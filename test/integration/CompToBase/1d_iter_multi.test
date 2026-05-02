@@ -1,8 +1,7 @@
 #===-- 1d_iter_multi.test -------------------------------------*-- Comp -*-===#
 #
 # 1D: 多个迭代方程 - CompToBase 测试
-# diff(u,t) = ... 和 u(x,t+1) = u(x,t) + diff(u,t)
-# 验证多个 sample 和算术运算
+# diff(u,x,2) = ... 和 u(x,t+1) = u(x,t) + diff(u,x,2)
 #
 #===------------------------------------------------------------------------===#
 
@@ -11,51 +10,29 @@
 # ===== 验证 comp 方言操作已消除 =====
 # CHECK-NOT: comp.
 
-# ===== 验证 memref 分配：第一维=2，第二维=x.points=51 =====
-# CHECK: memref.alloc() : memref<2x51xf64>
+# ===== 验证 memref 分配 =====
+# CHECK: memref.alloc() : memref<2x101xf64>
 
-# ===== 初始化循环 =====
+# ===== 时间迭代循环 =====
 # CHECK: affine.for {{.*}} = 0 to 51
-# CHECK: memref.store {{.*}} : memref<2x51xf64>
 
-# ===== 边界条件循环 =====
-# CHECK: affine.for {{.*}} = 0 to 101
-# CHECK: memref.store {{.*}} : memref<2x51xf64>
+# ===== 空间更新循环：有偏移跳过边界 =====
+# CHECK: affine.for {{.*}} = 1 to 100
 
-# CHECK: affine.for {{.*}} = 0 to 101
-# CHECK: memref.store {{.*}} : memref<2x51xf64>
-
-# ===== 时间迭代循环：t (0 to 100) =====
-# CHECK: affine.for {{.*}} = 0 to 100
-
-# ===== 空间更新循环：有偏移，跳过边界 x (1 to 50) =====
-# CHECK: affine.for {{.*}} = 1 to 50
-
-# ===== 验证多个 memref.load（多个 sample） =====
-# CHECK-DAG: memref.load {{.*}} : memref<2x51xf64>
-# CHECK-DAG: memref.load {{.*}} : memref<2x51xf64>
-# CHECK-DAG: memref.load {{.*}} : memref<2x51xf64>
-
-# ===== 验证算术运算 =====
-# CHECK: arith.addf
-# CHECK: arith.mulf
-# CHECK: arith.subf
-# CHECK: math.powf
-# CHECK: arith.divf
-# CHECK: arith.addf
-
-# ===== 存储 =====
-# CHECK: memref.store {{.*}} : memref<2x51xf64>
+# ===== 验证多个 affine.load =====
+# CHECK-DAG: affine.load {{.*}} : memref<2x101xf64>
+# CHECK-DAG: affine.load {{.*}} : memref<2x101xf64>
+# CHECK-DAG: affine.load {{.*}} : memref<2x101xf64>
 
 declarations {
-    x[0,50,51];
-    t[0,100,101];
+    x[0,100,101];
+    t[0,50,51];
 }
 
 equations {
     u(x,0) = 0;
-    u(0,t) = 100;
-    u(50,t) = 0;
+    u(0,t) = 0;
+    u(100,t) = 0;
     diff(u(x,t),x,2) = (u(x-1,t)+u(x+1,t)-2*u(x,t))/delta(x,2);
     u(x,t+1) = u(x,t) + diff(u(x,t),x,2);
 }

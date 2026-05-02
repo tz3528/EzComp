@@ -21,37 +21,28 @@
 
 # ===== 循环头：条件判断 =====
 # CHECK: arith.cmpi slt, {{.*}}, %c101 : index
-# CHECK: cf.cond_br {{.*}}, ^bb{{.*}}, ^bb{{.*}}(%c0 : index)
+# CHECK: cf.cond_br
 
 # ===== 循环体：memref.store 和增量 =====
 # CHECK: memref.store {{.*}} : memref<2x101xf64>
-# CHECK: arith.addi {{.*}}, %c1 : index
-# CHECK: cf.br {{.*}}({{.*}} : index)
 
-# ===== 边界条件循环1：u(0,t) =====
+# ===== 单点边界条件 =====
+# CHECK: memref.store {{.*}} : memref<2x101xf64>
+# CHECK: memref.store {{.*}} : memref<2x101xf64>
+
+# ===== 主迭代循环：t =====
 # CHECK: arith.cmpi slt, {{.*}}, %c51 : index
 # CHECK: cf.cond_br
 
-# ===== 边界条件循环2：u(100,t) =====
-# CHECK: arith.cmpi slt, {{.*}}, %c51 : index
-# CHECK: cf.cond_br
-
-# ===== 主迭代循环：t (0 to 50) =====
-# CHECK: arith.cmpi slt, {{.*}}, %c50 : index
-# CHECK: cf.cond_br
-
-# ===== 内层迭代循环：x (0 to 101) =====
+# ===== 内层迭代循环：x =====
 # CHECK: arith.cmpi slt, {{.*}}, %c101 : index
 # CHECK: cf.cond_br
 # CHECK: memref.load {{.*}} : memref<2x101xf64>
 # CHECK: memref.store {{.*}} : memref<2x101xf64>
 
-# ===== 主循环内的边界条件循环 =====
-# CHECK: arith.cmpi slt, {{.*}}, %c51 : index
-# CHECK: cf.cond_br
-
-# CHECK: arith.cmpi slt, {{.*}}, %c51 : index
-# CHECK: cf.cond_br
+# ===== 主循环内的边界条件 =====
+# CHECK: memref.store {{.*}} : memref<2x101xf64>
+# CHECK: memref.store {{.*}} : memref<2x101xf64>
 
 # CHECK: return
 

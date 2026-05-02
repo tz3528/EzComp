@@ -120,32 +120,62 @@ static mlir::LogicalResult buildOneCase(
     uint64_t mask,
     llvm::ArrayRef<mlir::Operation *> bodyOps,
     mlir::affine::AffineForOp &rootCaseLoop) {
-    rootCaseLoop = nullptr;
-    llvm::SmallVector<mlir::Value, 8> pointIvs;
 
+    rootCaseLoop = nullptr;
+
+    llvm::SmallVector<mlir::Value, 8> outerTileIvs(loopInfos.size());
+    llvm::SmallVector<bool, 8> isFullDim;
+    isFullDim.reserve(loopInfos.size());
+
+    // 第一阶段：只建 full-tile 的外层 tile loop
     for (size_t i = 0; i < loopInfos.size(); ++i) {
         const auto &loop = loopInfos[i];
         const auto &dim = dims[i];
         bool useTail = ((mask >> i) & 1ULL) != 0;
 
-        if (useTail) {
-            auto pointLoop = createStaticFor(
-                builder, loc, dim.fullUb, loop.ub, loop.step);
+        if (!useTail) {
+            auto tileLoop =
+                createStaticFor(builder, loc, loop.lb, dim.fullUb, dim.tileSize);
+            if (!rootCaseLoop)
+                rootCaseLoop = tileLoop;
+
+            outerTileIvs[i] = tileLoop.getInductionVar();
+            isFullDim.push_back(true);
+
+            builder.setInsertionPointToStart(tileLoop.getBody());
+        } else {
+            // tail 维度不在第一阶段生成
+            outerTileIvs[i] = mlir::Value();
+            isFullDim.push_back(false);
+        }
+    }
+
+    // 第二阶段：按维度生成真正执行 body 的 point/tail loops
+    llvm::SmallVector<mlir::Value, 8> pointIvs;
+    pointIvs.reserve(loopInfos.size());
+
+    for (size_t i = 0; i < loopInfos.size(); ++i) {
+        const auto &loop = loopInfos[i];
+        const auto &dim = dims[i];
+
+        if (isFullDim[i]) {
+            // full case: tile iv -> point loop
+            auto pointLoop = createTilePointFor(
+                builder, loc, outerTileIvs[i], dim.tileSize, loop.step);
             if (!rootCaseLoop)
                 rootCaseLoop = pointLoop;
+
             builder.setInsertionPointToStart(pointLoop.getBody());
             pointIvs.push_back(pointLoop.getInductionVar());
         } else {
-            auto tileLoop = createStaticFor(
-                builder, loc, loop.lb, dim.fullUb, dim.tileSize);
+            // tail case: 直接在第二阶段生成 untiled tail loop
+            auto tailLoop =
+                createStaticFor(builder, loc, dim.fullUb, loop.ub, loop.step);
             if (!rootCaseLoop)
-                rootCaseLoop = tileLoop;
-            builder.setInsertionPointToStart(tileLoop.getBody());
+                rootCaseLoop = tailLoop;
 
-            auto pointLoop = createTilePointFor(
-                builder, loc, tileLoop.getInductionVar(), dim.tileSize, loop.step);
-            builder.setInsertionPointToStart(pointLoop.getBody());
-            pointIvs.push_back(pointLoop.getInductionVar());
+            builder.setInsertionPointToStart(tailLoop.getBody());
+            pointIvs.push_back(tailLoop.getInductionVar());
         }
     }
 

@@ -208,6 +208,11 @@ std::vector<std::string> Linker::buildCommandLine() const {
         args.push_back(a);
     }
 
+    // 收集共享库目录用于 rpath（仅 Linux/macOS 需要）
+#if defined(__linux__) || defined(__APPLE__)
+    std::set<std::string> rpathDirs;
+#endif
+
     for (const auto &lib : config.libraries) {
         // 按分号分割（处理 CMake 传递的分号分隔列表）
         llvm::SmallVector<llvm::StringRef, 8> libs;
@@ -222,13 +227,31 @@ std::vector<std::string> Linker::buildCommandLine() const {
                 segment.find('\\') != llvm::StringRef::npos ||
                 segment.contains(".so") ||
                 segment.contains(".a") ||
-                segment.contains(".lib")) {
+                segment.contains(".lib") ||
+                segment.contains(".dylib")) {
                 args.push_back(segment.str());
+                
+                // 只为共享库添加 rpath（静态库不需要）
+#if defined(__linux__) || defined(__APPLE__)
+                if (segment.contains(".so") || segment.contains(".dylib")) {
+                    fs::path libPath(segment.str());
+                    if (libPath.has_parent_path()) {
+                        rpathDirs.insert(libPath.parent_path().string());
+                    }
+                }
+#endif
             } else {
                 args.push_back("-l" + segment.str());
             }
         }
     }
+
+    // 添加 rpath（Linux 和 macOS）
+#if defined(__linux__) || defined(__APPLE__)
+    for (const auto &dir : rpathDirs) {
+        args.push_back("-Wl,-rpath," + dir);
+    }
+#endif
     
     if (config.verbose) args.push_back("-v");
     

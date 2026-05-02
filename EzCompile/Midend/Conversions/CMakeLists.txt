@@ -1,6 +1,7 @@
 # --- EzCompile/Midend/Conversions/CMakeLists.txt ---
 
 target_sources(Midend PRIVATE
+        AdjustTimeIndex.cpp
         LowerCompApplyInit.cpp
         LowerCompCall.cpp
         LowerCompDelta.cpp
@@ -8,6 +9,7 @@ target_sources(Midend PRIVATE
         LowerCompDirichlet.cpp
         LowerCompField.cpp
         LowerCompForTime.cpp
+        LowerCompLoad.cpp
         LowerCompPoints.cpp
         LowerCompProblem.cpp
         LowerCompSolve.cpp
