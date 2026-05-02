@@ -18,8 +18,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 
-#include <hwloc.h>
-
 #include "BuildTilingNest.h"
 #include "TilingSizeSolve.h"
 #include "Utils/CacheUtil.h"
