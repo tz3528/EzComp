@@ -92,7 +92,8 @@ public:
     static mlir::LogicalResult linkModule(llvm::Module &module,
                                            const std::string &objectFile,
                                            const std::string &outputFile,
-                                           const std::vector<std::string> archives);
+                                           const std::vector<std::string> archives,
+                                           bool emitDebugInfo = false);
 
 private:
     LinkerConfig config;

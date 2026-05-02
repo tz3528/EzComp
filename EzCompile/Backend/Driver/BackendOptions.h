@@ -46,6 +46,11 @@ inline cl::opt<std::string> targetFeatures(
     cl::desc("Target CPU features (e.g. +avx2,+fma)"),
     cl::value_desc("features"));
 
+inline cl::opt<bool> emitDebugInfo(
+    "g",
+    cl::desc("Emit debug information"),
+    cl::init(false));
+
 //===----------------------------------------------------------------------===//
 // 输出选项
 //===----------------------------------------------------------------------===//
@@ -64,6 +69,7 @@ struct BackendConfig {
     std::string targetCPUVal;
     std::string targetFeaturesVal;
     std::string outputFileVal;
+    bool emitDebugInfoVal = false;
 
     /// 从命令行选项创建配置（用于 FullCompile 模式）
     /// @param inputFile 输入文件名，用于生成默认输出文件名
@@ -82,6 +88,7 @@ inline BackendConfig BackendConfig::fromCommandLine(llvm::StringRef inputFile) {
     config.mode = CompileMode::FullCompile;
     config.targetCPUVal = targetCPU.getValue();
     config.targetFeaturesVal = targetFeatures.getValue();
+    config.emitDebugInfoVal = emitDebugInfo.getValue();
     
     // 如果用户未指定输出文件名，则基于输入文件名生成默认值
     if (outputFile.empty() && !inputFile.empty()) {

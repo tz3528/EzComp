@@ -254,6 +254,7 @@ std::vector<std::string> Linker::buildCommandLine() const {
 #endif
     
     if (config.verbose) args.push_back("-v");
+    if (config.emitDebugInfo) args.push_back("-g");
     
     return args;
 }
@@ -285,7 +286,8 @@ mlir::LogicalResult Linker::run() {
 mlir::LogicalResult Linker::linkModule(llvm::Module &module,
                                         const std::string &objectFile,
                                         const std::string &outputFile,
-                                        const std::vector<std::string> archives) {
+                                        const std::vector<std::string> archives,
+                                        bool emitDebugInfo) {
     // 加载 manifest JSON
     ManifestParser parser;
     if (mlir::failed(ManifestParser::load(manifestPath, parser))) {
@@ -304,6 +306,7 @@ mlir::LogicalResult Linker::linkModule(llvm::Module &module,
     LinkerConfig config;
     config.objectFile = objectFile;
     config.outputFile = outputFile;
+    config.emitDebugInfo = emitDebugInfo;
     config.libraries = std::vector<std::string>(detected.libraries.begin(), 
                                                  detected.libraries.end());
     

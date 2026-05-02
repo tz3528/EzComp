@@ -89,7 +89,7 @@ mlir::LogicalResult Backend::fullCompile(llvm::Module &module) {
     }
 
     // 链接
-    if (mlir::failed(link::Linker::linkModule(module, objFile, exeFile, getRequiredArchives()))) {
+    if (mlir::failed(link::Linker::linkModule(module, objFile, exeFile, getRequiredArchives(), config.emitDebugInfoVal))) {
         return mlir::failure();
     }
 

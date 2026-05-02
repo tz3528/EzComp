@@ -20,6 +20,7 @@ struct LinkerConfig {
     std::vector<std::string> libraries;
     std::vector<std::string> archives;
     bool verbose = false;
+    bool emitDebugInfo = false;
 };
 
 } // namespace ezcompile::link
