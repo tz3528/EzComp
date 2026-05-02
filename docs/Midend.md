@@ -167,6 +167,27 @@ comp::PointsOp::create(builder, loc, resultType, dim);
 
 ---
 
+#### DeltaOp
+
+**用处**：计算维度的网格间距（或高阶差分步长）。计算公式：`delta = ((upper - lower) / (points - 1))^rank`
+
+**Create**：
+```cpp
+comp::DeltaOp::create(builder, loc, dim, rank);
+```
+
+**IR**：
+```mlir
+%d = comp.delta @x rank : f64
+```
+
+**说明**：
+- `rank = 0`：返回 1.0
+- `rank = 1`：返回网格间距 `(upper - lower) / (points - 1)`
+- `rank > 1`：返回网格间距的 rank 次幂
+
+---
+
 #### CoordOp
 
 **用处**：根据索引计算均匀网格上的坐标值。计算公式：`coord = lower + (upper - lower) * (index / (points - 1))`
@@ -321,10 +342,10 @@ comp::CallOp::create(builder, loc, resultType, callee, args);
 flowchart LR
     subgraph S1["阶段1: Comp → Base"]
         direction TB
-        A1[call] --> A2[points] --> A3[field]
-        A3 --> A4[apply_init/dirichlet]
-        A4 --> A5[for_time] --> A6[update]
-        A6 --> A7[dim] --> A8[solve] --> A9[problem]
+        A0[delta] --> A1[call] --> A2[points] --> A3[field]
+        A3 --> A4[apply_init] --> A5[dirichlet]
+        A5 --> A6[for_time] --> A7[update]
+        A7 --> A8[solve] --> A9[problem] --> A10[dim]
     end
 
     subgraph S2["阶段2: Affine → SCF"]
@@ -350,11 +371,11 @@ Comp 方言内部降级顺序的设计原则：
 2. **自底向上**：叶子操作先降级，容器操作最后降级
 
 具体顺序：
-- `call` → `points` → `field`：基础设施，被后续操作依赖
+- `delta` → `call` → `points` → `field`：基础设施，被后续操作依赖
 - `apply_init` / `dirichlet`：初始化和边界条件
 - `for_time` → `update`：时间步进
-- `dim`：维度信息在采样降级后不再需要
-- `solve` → `problem`：容器最后降级
+- `solve` → `problem`：容器操作
+- `dim`：维度信息最后消除
 
 ### 关键降级策略
 
@@ -364,9 +385,21 @@ Comp 方言内部降级顺序的设计原则：
 - 第一维大小为 2，实现 ping-pong 时间缓冲
 - 后续维度为各空间维度的网格点数
 
-**CoordOp → arith 计算**
+**CoordOp → arith 计算（内联降级）**
 
 `comp.coord @x %ix` 降级为：`coord = lower + (upper - lower) * (index / (points - 1))`
+
+**注意**：`CoordOp` 没有独立的降级 Pass，而是在以下 Pass 中内联降级：
+- `LowerCompApplyInit`
+- `LowerCompDirichlet`
+- `LowerCompForTime`
+- `LowerCompUpdate`
+
+这样做的原因是 `CoordOp` 的降级需要访问所在 Region 的上下文（如 block 参数），在各容器操作降级时统一处理更自然。
+
+**DeltaOp → arith.constant**
+
+`comp.delta @x rank` 降级为常量计算：`delta = ((upper - lower) / (points - 1))^rank`
 
 **SampleOp → memref.load**
 
